@@ -1,0 +1,351 @@
+
+import React, { useState, useEffect, useRef } from 'react';
+import { User, Branch, AttendanceRecord } from '../types';
+import { MapPin, Clock, CheckCircle, AlertCircle, RotateCcw, Cloud, FileText } from 'lucide-react';
+import { calculateDistance } from '../utils';
+
+interface UserDashboardProps {
+  user: User;
+  branches: Branch[];
+  records: AttendanceRecord[];
+  setRecords: React.Dispatch<React.SetStateAction<AttendanceRecord[]>>;
+  googleSheetLink: string;
+  onRefresh: () => void;
+  isSyncing: boolean;
+  lastUpdated?: string;
+}
+
+const UserDashboard: React.FC<UserDashboardProps> = ({ 
+  user, 
+  branches, 
+  records, 
+  setRecords, 
+  googleSheetLink, 
+  onRefresh, 
+  isSyncing, 
+  lastUpdated 
+}) => {
+  const findInitialBranchId = () => {
+    if (!user.defaultBranchId) return '';
+    const branchById = branches.find(b => b.id === user.defaultBranchId);
+    if (branchById) return branchById.id;
+    const branchByName = branches.find(b => b.name === user.defaultBranchId);
+    if (branchByName) return branchByName.id;
+    return '';
+  };
+
+  const [selectedBranchId, setSelectedBranchId] = useState(findInitialBranchId());
+  
+  // Continuous Location State (Working in background)
+  const [liveLocation, setLiveLocation] = useState<{ lat: number, lng: number, accuracy: number, timestamp: number } | null>(null);
+  const watchIdRef = useRef<number | null>(null);
+
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [status, setStatus] = useState<{ type: 'success' | 'error' | 'none', msg: string }>({ type: 'none', msg: '' });
+  const [reasonText, setReasonText] = useState('');
+
+  const [currentTime, setCurrentTime] = useState(new Date());
+
+  // Clock Interval
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Continuous Location Watching (Hidden Background Process)
+  useEffect(() => {
+    if (!navigator.geolocation) return;
+
+    const startWatching = () => {
+      watchIdRef.current = navigator.geolocation.watchPosition(
+        (pos) => {
+          setLiveLocation({
+            lat: pos.coords.latitude,
+            lng: pos.coords.longitude,
+            accuracy: pos.coords.accuracy,
+            timestamp: pos.timestamp
+          });
+        },
+        (err) => {
+          // Silent error handling in background
+          console.debug("Background GPS Error", err);
+        },
+        { enableHighAccuracy: true, timeout: 20000, maximumAge: 5000 }
+      );
+    };
+
+    startWatching();
+
+    return () => {
+      if (watchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!selectedBranchId && user.defaultBranchId) {
+      setSelectedBranchId(findInitialBranchId());
+    }
+  }, [branches, user.defaultBranchId]);
+
+  const formatTimeDisplay = (timeStr: string | undefined) => {
+    if (!timeStr) return '--:--';
+    if (timeStr.includes('GMT') || timeStr.includes('1899')) {
+      try {
+        const d = new Date(timeStr);
+        if (!isNaN(d.getTime())) {
+          return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+        }
+      } catch(e) {}
+    }
+    if (/^\d{2}:\d{2}$/.test(timeStr)) {
+      const [h, m] = timeStr.split(':').map(Number);
+      const suffix = h >= 12 ? 'PM' : 'AM';
+      const displayH = h % 12 || 12;
+      return `${displayH.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')} ${suffix}`;
+    }
+    return timeStr;
+  };
+
+  const calculateTimeDiffDetails = (type: 'check-in' | 'check-out') => {
+    let scheduledTimeStr = type === 'check-in' ? (user.checkInTime || "09:00") : (user.checkOutTime || "17:00");
+    let schedH = 9, schedM = 0;
+
+    if (scheduledTimeStr.includes('GMT') || scheduledTimeStr.includes('1899')) {
+       const d = new Date(scheduledTimeStr);
+       if (!isNaN(d.getTime())) {
+          schedH = d.getHours();
+          schedM = d.getMinutes();
+       }
+    } else {
+       const parts = scheduledTimeStr.split(':').map(Number);
+       schedH = parts[0] || 0;
+       schedM = parts[1] || 0;
+    }
+
+    const now = new Date();
+    const schedDate = new Date(now);
+    schedDate.setHours(schedH, schedM, 0, 0);
+
+    const diffMs = now.getTime() - schedDate.getTime();
+    const diffMinsTotal = Math.floor(diffMs / 60000);
+    const absMins = Math.abs(diffMinsTotal);
+    const h = Math.floor(absMins / 60);
+    const m = absMins % 60;
+    
+    let timeStr = `${h > 0 ? h + ' ساعة و ' : ''}${m} دقيقة`;
+    let isLate = false;
+    let resultString = "";
+
+    if (type === 'check-in') {
+      isLate = diffMinsTotal > 0;
+      resultString = isLate ? `حضور متأخر ${timeStr}` : `حضور مبكر ${timeStr}`;
+    } else {
+      isLate = diffMinsTotal < 0; 
+      resultString = diffMinsTotal < 0 ? `انصراف مبكر ${timeStr}` : `انصراف متأخر ${timeStr}`;
+    }
+
+    return { resultString, isLate, diffMinsTotal };
+  };
+
+  const handleAttendance = async (type: 'check-in' | 'check-out') => {
+    // 1. Connectivity Check
+    if (!navigator.onLine || !googleSheetLink) { 
+      setStatus({ type: 'error', msg: 'عذراً، يجب أن يكون الهاتف متصلاً بالإنترنت وبالبيانات السحابية لإرسال التسجيل.' }); 
+      return; 
+    }
+
+    if (!selectedBranchId) { 
+      setStatus({ type: 'error', msg: 'يرجى اختيار الفرع أولاً' }); 
+      return; 
+    }
+
+    setIsVerifying(true);
+    setStatus({ type: 'none', msg: '' });
+
+    // 2. Location Confirmation Logic
+    let lat = 0;
+    let lng = 0;
+
+    // Check if we have a fresh background location (less than 60 seconds old)
+    const isBackgroundLocationFresh = liveLocation && (Date.now() - liveLocation.timestamp < 60000);
+
+    if (isBackgroundLocationFresh && liveLocation) {
+        // Use background location instantly
+        lat = liveLocation.lat;
+        lng = liveLocation.lng;
+    } else {
+        // Fallback: Force a fresh GPS update if background is stale or missing
+        try {
+            const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+                navigator.geolocation.getCurrentPosition(resolve, reject, {
+                    enableHighAccuracy: true,
+                    timeout: 10000,
+                    maximumAge: 0
+                });
+            });
+            lat = position.coords.latitude;
+            lng = position.coords.longitude;
+            
+            // Update the live location state as well
+            setLiveLocation({
+                lat, lng, accuracy: position.coords.accuracy, timestamp: position.timestamp
+            });
+        } catch (error) {
+            setIsVerifying(false);
+            setStatus({ type: 'error', msg: 'تعذر تحديد الموقع الحالي بدقة. تأكد من تفعيل GPS والمحاولة مرة أخرى.' });
+            return;
+        }
+    }
+
+    // 3. Process Attendance
+    const branch = branches.find(b => b.id === selectedBranchId);
+    if (!branch) {
+      setIsVerifying(false);
+      return;
+    }
+
+    if (branch.name.trim().toLowerCase() === 'out door' && reasonText.trim() === "") {
+        setStatus({ type: 'error', msg: 'تنبيه: عند اختيار Out Door يجب كتابة تفاصيل المكان أو السبب في خانة الملاحظات.' });
+        setIsVerifying(false);
+        return;
+    }
+
+    // UX Distance Check
+    const distance = calculateDistance(lat, lng, branch.latitude, branch.longitude);
+    if (distance > branch.radius) { 
+        setStatus({ type: 'error', msg: `بعيد عن الفرع بمسافة ${Math.round(distance)}م. الحد المسموح ${branch.radius}م.` }); 
+        setIsVerifying(false);
+        return; 
+    }
+
+    const timeInfo = calculateTimeDiffDetails(type);
+
+    if (type === 'check-in' && timeInfo.isLate && reasonText.trim() === "") {
+        setStatus({ type: 'error', msg: 'تنبيه: أنت متأخر عن الموعد الافتراضي، يجب كتابة سبب التأخير في خانة الملاحظات قبل الإرسال.' });
+        setIsVerifying(false);
+        return;
+    }
+
+    const newRecord: AttendanceRecord = {
+        id: Math.random().toString(36).substr(2, 9),
+        userId: user.id, 
+        userName: user.fullName, 
+        userJob: user.jobTitle,
+        serialNumber: user.serialNumber, 
+        branchId: branch.id, 
+        branchName: branch.name, 
+        type: type,
+        timestamp: new Date().toISOString(), 
+        latitude: lat, 
+        longitude: lng,
+        reason: reasonText.trim(), 
+        timeDiff: timeInfo.resultString
+    };
+
+    try {
+        if (googleSheetLink) {
+          await fetch(googleSheetLink, {
+            method: 'POST', 
+            mode: 'no-cors', 
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+              action: 'saveAttendance', 
+              ...newRecord, 
+              nationalId: user.nationalId,
+              serialNumber: user.serialNumber 
+            })
+          });
+        }
+        
+        setRecords(prev => [...prev, newRecord]);
+        setStatus({ type: 'success', msg: `تم تسجيل ${type === 'check-in' ? 'الحضور' : 'الانصراف'} بنجاح. (${timeInfo.resultString})` });
+        setReasonText('');
+    } catch (err) {
+        setStatus({ type: 'error', msg: 'حدث خطأ أثناء الإرسال للسحابة. يرجى المحاولة مرة أخرى.' });
+    } finally {
+        setIsVerifying(false);
+    }
+  };
+
+  const myRecords = records.filter(r => r.userId === user.id).slice(-5).reverse();
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="lg:col-span-2 space-y-6">
+        <div className="bg-slate-800 rounded-3xl shadow-xl border border-slate-700 p-8 text-white relative overflow-hidden">
+          <div className="absolute left-2 top-6 flex flex-col items-end gap-2">
+            <button onClick={onRefresh} disabled={isSyncing} className="p-2.5 bg-slate-900 rounded-xl border border-slate-700 text-slate-400 hover:text-blue-400 transition-all shadow-lg active:scale-95">
+              <RotateCcw size={20} className={isSyncing ? 'animate-spin text-blue-400' : ''} />
+            </button>
+            <div className="h-12"></div>
+            {lastUpdated && (<div className="flex items-center gap-1 text-[8px] font-black text-slate-500 bg-slate-900 px-2 py-1 rounded-md border border-slate-800 uppercase"><Cloud size={8} /> Updated: {new Date(lastUpdated).toLocaleTimeString('en-US')}</div>)}
+          </div>
+          <div className="text-center mb-8 pt-4">
+             <h2 className="text-3xl font-black text-white mb-2 tracking-tighter">أهلاً، {user.fullName.split(' ')[0]}</h2>
+             <div className="bg-blue-900/30 px-5 py-1.5 rounded-xl text-blue-400 border border-blue-800/40 font-black text-[10px] inline-block uppercase tracking-widest">{user.jobTitle || 'موظف'} | SN: {user.serialNumber || '---'}</div>
+             <div className="text-5xl font-black text-white mt-10 mb-2 tracking-tighter drop-shadow-2xl">{currentTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</div>
+             <div className="text-slate-500 font-bold text-xs uppercase tracking-widest">{currentTime.toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long' })}</div>
+             <div className="mt-4 flex justify-center gap-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                <span className="bg-slate-900 px-3 py-1 rounded-lg border border-slate-700">موعد الحضور: {formatTimeDisplay(user.checkInTime || '09:00')}</span>
+                <span className="bg-slate-900 px-3 py-1 rounded-lg border border-slate-700">موعد الانصراف: {formatTimeDisplay(user.checkOutTime || '17:00')}</span>
+             </div>
+          </div>
+          
+          <div className="space-y-6 max-w-md mx-auto">
+            {!googleSheetLink && (
+              <div className="p-3 bg-red-900/40 border border-red-500/50 rounded-2xl flex items-center gap-3 text-red-200 text-[10px] font-black uppercase">
+                <Cloud size={16} /> التطبيق غير مربوط بالسحابة - لن يتم الإرسال
+              </div>
+            )}
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-slate-500 mr-2 uppercase tracking-tighter">موقع التسجيل</label>
+              <div className="relative">
+                <select value={selectedBranchId} onChange={e => setSelectedBranchId(e.target.value)} className="w-full bg-slate-900 border border-slate-700 text-white px-6 py-4 rounded-2xl font-bold outline-none cursor-pointer appearance-none shadow-inner focus:border-blue-500 transition-all text-right">
+                  <option value="">-- اختر الفرع للتسجيل --</option>
+                  {branches.map(b => (<option key={b.id} value={b.id}>{b.name} {(b.id === user.defaultBranchId || b.name === user.defaultBranchId) ? '(الأساسي)' : ''}</option>))}
+                </select>
+                <MapPin size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600 pointer-events-none" />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-slate-500 mr-2 uppercase tracking-tighter flex items-center gap-1"><FileText size={12} /> ملاحظات / سبب التأخير (إلزامي عند التأخير)</label>
+              <textarea value={reasonText} onChange={e => setReasonText(e.target.value)} placeholder="اكتب السبب هنا في حال وجود تأخير أو انصراف مبكر..." className="w-full bg-slate-900 border border-slate-700 text-white px-4 py-3 rounded-2xl font-bold outline-none focus:border-blue-500 transition-all text-right h-24 resize-none shadow-inner text-xs placeholder:text-slate-600" />
+            </div>
+            
+            {status.type !== 'none' && (<div className={`p-4 rounded-2xl text-[10px] font-black border flex items-center gap-3 ${status.type === 'success' ? 'bg-green-900/20 text-green-400 border-green-800/50' : 'bg-red-900/20 text-red-400 border-red-800/50'}`}>{status.type === 'error' ? <AlertCircle size={20} className="shrink-0" /> : <CheckCircle size={20} className="shrink-0" />}<span className="leading-relaxed">{status.msg}</span></div>)}
+            
+            <div className="grid grid-cols-2 gap-4">
+              <button disabled={isVerifying} onClick={() => handleAttendance('check-in')} className="py-6 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-2xl font-black text-lg shadow-xl shadow-blue-900/20 active:scale-95 transition-all flex flex-col items-center justify-center gap-1">
+                <span>حضور</span>
+                {isVerifying && <span className="text-[9px] animate-pulse">جاري التأكد من الموقع...</span>}
+              </button>
+              <button disabled={isVerifying} onClick={() => handleAttendance('check-out')} className="py-6 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-white rounded-2xl font-black text-lg shadow-xl shadow-slate-900/20 active:scale-95 transition-all border border-slate-600 flex flex-col items-center justify-center gap-1">
+                <span>انصراف</span>
+                {isVerifying && <span className="text-[9px] animate-pulse">جاري التأكد من الموقع...</span>}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="bg-slate-800 rounded-3xl p-6 border border-slate-700 shadow-xl text-white">
+        <h3 className="font-black mb-6 border-b border-slate-700 pb-4 flex items-center gap-2 text-blue-400 text-[10px] uppercase tracking-widest">السجل الأخير</h3>
+        <div className="space-y-4">
+          {myRecords.length === 0 ? (<div className="text-center py-10 opacity-20"><Clock size={40} className="mx-auto" /></div>) : (
+            myRecords.map(r => (
+              <div key={r.id} className="p-4 bg-slate-900 rounded-2xl border border-slate-700/50 group hover:border-blue-500 transition-all text-right">
+                <div className="flex justify-between font-black text-[10px] mb-1 uppercase tracking-tighter"><span className="text-slate-300">{r.branchName}</span><span className={r.type === 'check-in' ? 'text-green-400' : 'text-orange-400'}>{r.type === 'check-in' ? 'حضور' : 'انصراف'}</span></div>
+                <div className="text-[9px] text-slate-500 font-bold mb-1">{new Date(r.timestamp).toLocaleTimeString('en-US')}</div>
+                <div className="text-[8px] text-blue-400 font-black mb-1 italic uppercase">{r.timeDiff}</div>
+                {r.reason && (<div className="text-[8px] text-slate-400 font-bold bg-slate-800 p-2 rounded-lg border border-slate-700">السبب: {r.reason}</div>)}
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default UserDashboard;
