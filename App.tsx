@@ -141,6 +141,9 @@ const App: React.FC = () => {
   useEffect(() => {
      if (!config.syncUrl) return;
 
+     // STOP Auto-Sync for Admin to allow local editing without overwrites
+     if (currentUser?.role === 'admin') return;
+
      // 1. Sync immediately when coming back online
      if (isOnline) {
        syncWithCloud(config.syncUrl);
@@ -154,7 +157,7 @@ const App: React.FC = () => {
      }, 60000); // 1 minute interval
 
      return () => clearInterval(intervalId);
-  }, [isOnline, config.syncUrl, syncWithCloud]);
+  }, [isOnline, config.syncUrl, syncWithCloud, currentUser]);
 
   useEffect(() => { localStorage.setItem('attendance_branches', JSON.stringify(branches)); }, [branches]);
   useEffect(() => { localStorage.setItem('attendance_jobs', JSON.stringify(jobs)); }, [jobs]);
@@ -193,8 +196,14 @@ const App: React.FC = () => {
                   <RefreshCw size={14} className="text-blue-500 animate-spin" />
                 ) : isOnline && config.syncUrl ? (
                   <div className="flex items-center gap-1">
-                    <Cloud size={14} className="text-green-500" />
-                    <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
+                    {currentUser?.role === 'admin' ? (
+                      <span className="text-[10px] text-orange-500 font-bold border border-orange-200 bg-orange-50 px-1.5 py-0.5 rounded">Manual Sync</span>
+                    ) : (
+                      <>
+                        <Cloud size={14} className="text-green-500" />
+                        <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
+                      </>
+                    )}
                   </div>
                 ) : (
                   <CloudOff size={14} className="text-red-500" />
