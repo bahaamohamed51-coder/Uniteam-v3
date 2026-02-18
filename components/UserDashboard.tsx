@@ -172,11 +172,9 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
     const isBackgroundLocationFresh = liveLocation && (Date.now() - liveLocation.timestamp < 60000);
 
     if (isBackgroundLocationFresh && liveLocation) {
-        // Use background location instantly
         lat = liveLocation.lat;
         lng = liveLocation.lng;
     } else {
-        // Fallback: Force a fresh GPS update if background is stale or missing
         try {
             const position = await new Promise<GeolocationPosition>((resolve, reject) => {
                 navigator.geolocation.getCurrentPosition(resolve, reject, {
@@ -187,8 +185,6 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
             });
             lat = position.coords.latitude;
             lng = position.coords.longitude;
-            
-            // Update the live location state as well
             setLiveLocation({
                 lat, lng, accuracy: position.coords.accuracy, timestamp: position.timestamp
             });
@@ -199,7 +195,7 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
         }
     }
 
-    // 3. Process Attendance
+    // 3. Client-Side Checks
     const branch = branches.find(b => b.id === selectedBranchId);
     if (!branch) {
       setIsVerifying(false);
@@ -212,7 +208,6 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
         return;
     }
 
-    // UX Distance Check
     const distance = calculateDistance(lat, lng, branch.latitude, branch.longitude);
     if (distance > branch.radius) { 
         setStatus({ type: 'error', msg: `بعيد عن الفرع بمسافة ${Math.round(distance)}م. الحد المسموح ${branch.radius}م.` }); 
@@ -246,10 +241,13 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
 
     try {
         if (googleSheetLink) {
-          await fetch(googleSheetLink, {
+          // 4. STRICT Server Check - Ensure Code Exists & Valid
+          // Removed 'no-cors' to allow reading status and body. 
+          // Apps Script MUST be deployed as "Anyone" for this to work.
+          const response = await fetch(googleSheetLink, {
             method: 'POST', 
-            mode: 'no-cors', 
-            headers: { 'Content-Type': 'application/json' },
+            // mode: 'cors', // Implicit default
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // Use text/plain to avoid preflight issues
             body: JSON.stringify({ 
               action: 'saveAttendance', 
               ...newRecord, 
@@ -257,13 +255,61 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
               serialNumber: user.serialNumber 
             })
           });
+
+          // A) Check for 404 (Script Deleted/Wrong URL)
+          if (response.status === 404) {
+             throw new Error("SERVER_404");
+          }
+
+          if (!response.ok) {
+            throw new Error(`HTTP Error: ${response.status}`);
+          }
+
+          const responseText = await response.text();
+          
+          // B) Check content validity (Avoid HTML/Google Login pages)
+          if (!responseText || responseText.trim().startsWith("<")) {
+             throw new Error("INVALID_RESPONSE_FORMAT");
+          }
+
+          // C) Logic Validation
+          if (responseText.includes("Error") || responseText.includes("Security Alert")) {
+             // Logic Error (User deleted, Distance, etc.)
+             setStatus({ type: 'error', msg: responseText });
+             setIsVerifying(false);
+             return;
+          }
+
+          // D) Code Freshness Check
+          // Only proceed if server specifically confirms recording.
+          // This prevents "Old Code" that might respond with success: true but do nothing, or different text.
+          if (!responseText.includes("Attendance Recorded")) {
+             throw new Error("OLD_OR_INVALID_CODE");
+          }
+
         }
         
+        // Only update local state if all checks passed
         setRecords(prev => [...prev, newRecord]);
         setStatus({ type: 'success', msg: `تم تسجيل ${type === 'check-in' ? 'الحضور' : 'الانصراف'} بنجاح. (${timeInfo.resultString})` });
         setReasonText('');
-    } catch (err) {
-        setStatus({ type: 'error', msg: 'حدث خطأ أثناء الإرسال للسحابة. يرجى المحاولة مرة أخرى.' });
+
+    } catch (err: any) {
+        console.error("Attendance Error:", err);
+        
+        let errorMsg = 'فشل الاتصال بالنظام. تأكد من الإنترنت.';
+        
+        if (err.message === "SERVER_404") {
+            errorMsg = 'رابط الشركة غير صحيح أو تم حذفه من السيرفر (404).';
+        } else if (err.message === "INVALID_RESPONSE_FORMAT") {
+            errorMsg = 'الرابط المسجل لا يؤدي إلى كود النظام. يرجى مراجعة المسؤول.';
+        } else if (err.message === "OLD_OR_INVALID_CODE") {
+            errorMsg = 'كود السيرفر قديم أو غير متوافق. لن يتم تسجيل الحضور.';
+        } else if (err.message === "Failed to fetch") {
+            errorMsg = 'تعذر الوصول للسيرفر. تأكد من اتصال الإنترنت أو صحة الرابط.';
+        }
+
+        setStatus({ type: 'error', msg: errorMsg });
     } finally {
         setIsVerifying(false);
     }
@@ -319,11 +365,11 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
             <div className="grid grid-cols-2 gap-4">
               <button disabled={isVerifying} onClick={() => handleAttendance('check-in')} className="py-6 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-2xl font-black text-lg shadow-xl shadow-blue-900/20 active:scale-95 transition-all flex flex-col items-center justify-center gap-1">
                 <span>حضور</span>
-                {isVerifying && <span className="text-[9px] animate-pulse">جاري التأكد من الموقع...</span>}
+                {isVerifying && <span className="text-[9px] animate-pulse">جاري التحقق مع السيرفر...</span>}
               </button>
               <button disabled={isVerifying} onClick={() => handleAttendance('check-out')} className="py-6 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-white rounded-2xl font-black text-lg shadow-xl shadow-slate-900/20 active:scale-95 transition-all border border-slate-600 flex flex-col items-center justify-center gap-1">
                 <span>انصراف</span>
-                {isVerifying && <span className="text-[9px] animate-pulse">جاري التأكد من الموقع...</span>}
+                {isVerifying && <span className="text-[9px] animate-pulse">جاري التحقق مع السيرفر...</span>}
               </button>
             </div>
           </div>
