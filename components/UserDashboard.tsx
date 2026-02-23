@@ -244,7 +244,7 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
         
         // جلب أحدث رابط من السيرفر قبل التسجيل مباشرة لضمان عدم استخدام رابط قديم
         try {
-            const configRes = await fetch('/server-config.json?t=' + Date.now());
+            const configRes = await fetch('./server-config.json?t=' + Date.now());
             if (configRes.ok) {
                 const configData = await configRes.json();
                 if (configData && configData.googleSheetLink && configData.googleSheetLink.startsWith('http')) {
