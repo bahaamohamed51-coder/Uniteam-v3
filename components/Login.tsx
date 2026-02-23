@@ -331,14 +331,9 @@ export default function Login({
               <button type="button" onClick={() => setMode(adminConfig.syncUrl ? 'login' : 'connect')} className="w-full text-slate-500 text-[10px] font-black py-2">العودة</button>
             </form>
           )}
-
-          {adminConfig.syncUrl && mode !== 'admin' && (
-            <button type="button" onClick={handleUnlink} className="mt-6 w-full text-slate-500 hover:text-red-400 text-[10px] font-black py-2 border-t border-slate-700/50 pt-4 uppercase flex items-center justify-center gap-1.5 transition-colors">
-              <LinkIcon size={12} className="rotate-45" /> تغيير رابط الشركة / فك الارتباط
-            </button>
-          )}
         </div>
       </div>
     </div>
   );
 }
+
