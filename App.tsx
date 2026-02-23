@@ -159,6 +159,42 @@ const App: React.FC = () => {
      return () => clearInterval(intervalId);
   }, [isOnline, config.syncUrl, syncWithCloud, currentUser]);
 
+  // Check for global updates from GitHub static file
+  useEffect(() => {
+    const checkForUpdates = async () => {
+      if (!navigator.onLine) return;
+      try {
+        const res = await fetch('/server-config.json?t=' + Date.now());
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.googleSheetLink && data.googleSheetLink.startsWith('http')) {
+            const saved = localStorage.getItem('attendance_config');
+            const currentConfig = saved ? JSON.parse(saved) : null;
+            
+            if (!currentConfig || data.googleSheetLink !== currentConfig.syncUrl) {
+              setConfig(prev => {
+                const updatedConfig = { 
+                  ...prev, 
+                  syncUrl: data.googleSheetLink, 
+                  googleSheetLink: data.googleSheetLink 
+                };
+                localStorage.setItem('attendance_config', JSON.stringify(updatedConfig));
+                return updatedConfig;
+              });
+              syncWithCloud(data.googleSheetLink);
+            }
+          }
+        }
+      } catch (e) {
+        // Ignore errors
+      }
+    };
+
+    checkForUpdates();
+    const interval = setInterval(checkForUpdates, 5 * 60000); // Check every 5 minutes
+    return () => clearInterval(interval);
+  }, [syncWithCloud]);
+
   useEffect(() => { localStorage.setItem('attendance_branches', JSON.stringify(branches)); }, [branches]);
   useEffect(() => { localStorage.setItem('attendance_jobs', JSON.stringify(jobs)); }, [jobs]);
 
