@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { User, Branch, AttendanceRecord } from '../types';
 import { MapPin, Clock, CheckCircle, AlertCircle, RotateCcw, Cloud, FileText } from 'lucide-react';
-import { calculateDistance } from '../utils';
+import { calculateDistance, getDeviceFingerprint } from '../utils';
 
 interface UserDashboardProps {
   user: User;
@@ -252,7 +252,8 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
               action: 'saveAttendance', 
               ...newRecord, 
               nationalId: user.nationalId,
-              serialNumber: user.serialNumber 
+              serialNumber: user.serialNumber,
+              deviceId: getDeviceFingerprint()
             })
           });
 
