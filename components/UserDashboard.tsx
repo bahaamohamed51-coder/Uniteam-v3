@@ -151,8 +151,8 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
 
   const handleAttendance = async (type: 'check-in' | 'check-out') => {
     // 1. Connectivity Check
-    if (!navigator.onLine || !googleSheetLink) { 
-      setStatus({ type: 'error', msg: 'عذراً، يجب أن يكون الهاتف متصلاً بالإنترنت وبالبيانات السحابية لإرسال التسجيل.' }); 
+    if (!navigator.onLine) { 
+      setStatus({ type: 'error', msg: 'عذراً، يجب أن يكون الهاتف متصلاً بالإنترنت لإرسال التسجيل.' }); 
       return; 
     }
 
@@ -240,22 +240,50 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
     };
 
     try {
-        if (googleSheetLink) {
-          // 4. STRICT Server Check - Ensure Code Exists & Valid
-          // Removed 'no-cors' to allow reading status and body. 
-          // Apps Script MUST be deployed as "Anyone" for this to work.
-          const response = await fetch(googleSheetLink, {
-            method: 'POST', 
-            // mode: 'cors', // Implicit default
-            headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // Use text/plain to avoid preflight issues
-            body: JSON.stringify({ 
-              action: 'saveAttendance', 
-              ...newRecord, 
-              nationalId: user.nationalId,
-              serialNumber: user.serialNumber,
-              deviceId: getDeviceFingerprint()
-            })
-          });
+        let activeLink = googleSheetLink;
+        
+        // جلب أحدث رابط من السيرفر قبل التسجيل مباشرة لضمان عدم استخدام رابط قديم
+        try {
+            const configRes = await fetch('/server-config.json?t=' + Date.now());
+            if (configRes.ok) {
+                const configData = await configRes.json();
+                if (configData && configData.googleSheetLink && configData.googleSheetLink.startsWith('http')) {
+                    activeLink = configData.googleSheetLink;
+                    // تحديث التخزين المحلي بصمت
+                    const savedConfig = localStorage.getItem('attendance_config');
+                    if (savedConfig) {
+                        const parsed = JSON.parse(savedConfig);
+                        if (parsed.googleSheetLink !== activeLink) {
+                            parsed.googleSheetLink = activeLink;
+                            parsed.syncUrl = activeLink;
+                            localStorage.setItem('attendance_config', JSON.stringify(parsed));
+                        }
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn("Could not verify latest link, proceeding with current.");
+        }
+
+        if (!activeLink) {
+            throw new Error("NO_LINK");
+        }
+
+        // 4. STRICT Server Check - Ensure Code Exists & Valid
+        // Removed 'no-cors' to allow reading status and body. 
+        // Apps Script MUST be deployed as "Anyone" for this to work.
+        const response = await fetch(activeLink, {
+          method: 'POST', 
+          // mode: 'cors', // Implicit default
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // Use text/plain to avoid preflight issues
+          body: JSON.stringify({ 
+            action: 'saveAttendance', 
+            ...newRecord, 
+            nationalId: user.nationalId,
+            serialNumber: user.serialNumber,
+            deviceId: getDeviceFingerprint()
+          })
+        });
 
           // A) Check for 404 (Script Deleted/Wrong URL)
           if (response.status === 404) {
@@ -287,8 +315,6 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
           if (!responseText.includes("Attendance Recorded")) {
              throw new Error("OLD_OR_INVALID_CODE");
           }
-
-        }
         
         // Only update local state if all checks passed
         setRecords(prev => [...prev, newRecord]);
@@ -300,7 +326,9 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
         
         let errorMsg = 'فشل الاتصال بالنظام. تأكد من الإنترنت.';
         
-        if (err.message === "SERVER_404") {
+        if (err.message === "NO_LINK") {
+            errorMsg = 'التطبيق غير مربوط بالسحابة - يرجى تحديث الصفحة أو مراجعة الإدارة.';
+        } else if (err.message === "SERVER_404") {
             errorMsg = 'رابط الشركة غير صحيح أو تم حذفه من السيرفر (404).';
         } else if (err.message === "INVALID_RESPONSE_FORMAT") {
             errorMsg = 'الرابط المسجل لا يؤدي إلى كود النظام. يرجى مراجعة المسؤول.';
