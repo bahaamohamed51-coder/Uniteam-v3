@@ -164,7 +164,7 @@ const App: React.FC = () => {
     const checkForUpdates = async () => {
       if (!navigator.onLine) return;
       try {
-        const res = await fetch('/server-config.json?t=' + Date.now());
+        const res = await fetch('./server-config.json?t=' + Date.now());
         if (res.ok) {
           const data = await res.json();
           if (data && data.googleSheetLink && data.googleSheetLink.startsWith('http')) {
