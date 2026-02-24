@@ -167,6 +167,7 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
     // 2. Location Confirmation Logic
     let lat = 0;
     let lng = 0;
+    let accuracy = 0;
 
     // Check if we have a fresh background location (less than 60 seconds old)
     const isBackgroundLocationFresh = liveLocation && (Date.now() - liveLocation.timestamp < 60000);
@@ -174,6 +175,7 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
     if (isBackgroundLocationFresh && liveLocation) {
         lat = liveLocation.lat;
         lng = liveLocation.lng;
+        accuracy = liveLocation.accuracy;
     } else {
         try {
             const position = await new Promise<GeolocationPosition>((resolve, reject) => {
@@ -185,6 +187,7 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
             });
             lat = position.coords.latitude;
             lng = position.coords.longitude;
+            accuracy = position.coords.accuracy;
             setLiveLocation({
                 lat, lng, accuracy: position.coords.accuracy, timestamp: position.timestamp
             });
@@ -194,6 +197,17 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
             return;
         }
     }
+
+    // --- GPS Accuracy Check (Anti-Spoofing & Signal Quality) ---
+    if (accuracy <= 0 || accuracy > 500) {
+        setStatus({ 
+            type: 'error', 
+            msg: `إشارة الـ GPS غير دقيقة أو مشبوهة (الدقة: ${Math.round(accuracy)} متر). يرجى الوقوف في مكان مفتوح وإغلاق أي برامج لتغيير الموقع ثم المحاولة مرة أخرى.` 
+        });
+        setIsVerifying(false);
+        return;
+    }
+    // -----------------------------------------------------------
 
     // 3. Client-Side Checks
     const branch = branches.find(b => b.id === selectedBranchId);
