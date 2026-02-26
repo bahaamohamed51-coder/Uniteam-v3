@@ -99,6 +99,7 @@ const App: React.FC = () => {
       if (data.users && Array.isArray(data.users)) setAllUsers(data.users);
       
       const updatedConfig = { ...config, lastUpdated: new Date().toISOString(), syncUrl: url, googleSheetLink: url };
+      if (data.holidays) updatedConfig.holidays = data.holidays;
       setConfig(updatedConfig);
       localStorage.setItem('attendance_config', JSON.stringify(updatedConfig));
     } catch (err) {
