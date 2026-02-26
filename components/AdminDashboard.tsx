@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Branch, AttendanceRecord, AppConfig, User, Job, ReportAccount } from '../types';
-import { MapPin, Table, Trash2, Shield, CloudUpload, Briefcase, RotateCcw, Globe, Users, Plus, FileSpreadsheet, Download, Share2, Smartphone, RefreshCw, Edit2, Check, X, Unlink, Key, Lock, Eye, EyeOff, Clock, Monitor, UserCheck } from 'lucide-react';
+import { MapPin, Table, Trash2, Shield, CloudUpload, Briefcase, RotateCcw, Globe, Users, Plus, FileSpreadsheet, Download, Share2, Smartphone, RefreshCw, Edit2, Check, X, Unlink, Key, Lock, Eye, EyeOff, Clock, Monitor, UserCheck, Calendar } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
 interface AdminDashboardProps {
@@ -24,9 +24,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   branches, setBranches, jobs, setJobs, records, config, setConfig, allUsers, setAllUsers, 
   reportAccounts = [], setReportAccounts, onRefresh, isSyncing
 }) => {
-  const [activeTab, setActiveTab] = useState<'branches' | 'jobs' | 'users' | 'report-access' | 'settings'>('branches');
+  const [activeTab, setActiveTab] = useState<'branches' | 'jobs' | 'users' | 'report-access' | 'holidays'>('branches');
   const [newBranch, setNewBranch] = useState<Partial<Branch>>({ name: '', latitude: 0, longitude: 0, radius: 100 });
   const [newJobTitle, setNewJobTitle] = useState('');
+  const [newHoliday, setNewHoliday] = useState('');
   const [isPushing, setIsPushing] = useState(false);
   
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
@@ -99,6 +100,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           jobs: jobs,
           users: allUsers,
           reportAccounts: reportAccounts,
+          holidays: config.holidays || [],
           adminUsername: config.adminUsername,
           adminPassword: config.adminPassword
         })
@@ -285,8 +287,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           { id: 'branches', label: 'الفروع', icon: MapPin },
           { id: 'jobs', label: 'الوظائف', icon: Briefcase },
           { id: 'users', label: 'الموظفين', icon: Users },
-          { id: 'report-access', label: 'صلاحيات التقارير', icon: Key },
-          { id: 'settings', label: 'الإعدادات', icon: Shield }
+          { id: 'holidays', label: 'الإجازات', icon: Calendar },
+          { id: 'report-access', label: 'صلاحيات التقارير', icon: Key }
         ].map(tab => (
           <button
             key={tab.id}
@@ -487,13 +489,54 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
             <div className="flex gap-4 bg-slate-900/50 p-6 rounded-3xl border border-slate-700">
                <input type="text" placeholder="عنوان الوظيفة" className={inputClasses} value={newJobTitle} onChange={e => setNewJobTitle(e.target.value)} />
-               <button onClick={() => { if(newJobTitle.trim()) { setJobs([...jobs, { id: Math.random().toString(36).substr(2, 9), title: newJobTitle }]); setNewJobTitle(''); } }} className="bg-blue-600 hover:bg-blue-500 text-white rounded-xl px-8 font-black flex items-center gap-2 transition-all"><Plus size={20}/> إضافة</button>
+               <button onClick={() => { if(newJobTitle.trim()) { setJobs([...jobs, { id: Math.random().toString(36).substr(2, 9), title: newJobTitle, workingDays: [0, 1, 2, 3, 4, 6] }]); setNewJobTitle(''); } }} className="bg-blue-600 hover:bg-blue-500 text-white rounded-xl px-8 font-black flex items-center gap-2 transition-all"><Plus size={20}/> إضافة</button>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+               {jobs.map(j => {
+                 const DAYS = [{id:0, label:'ح'}, {id:1, label:'ن'}, {id:2, label:'ث'}, {id:3, label:'ر'}, {id:4, label:'خ'}, {id:5, label:'ج'}, {id:6, label:'س'}];
+                 const toggleJobDay = (jobId: string, dayId: number) => {
+                   setJobs(jobs.map(job => {
+                     if (job.id === jobId) {
+                       const currentDays = job.workingDays || [0, 1, 2, 3, 4, 6];
+                       const newDays = currentDays.includes(dayId) ? currentDays.filter(d => d !== dayId) : [...currentDays, dayId];
+                       return { ...job, workingDays: newDays };
+                     }
+                     return job;
+                   }));
+                 };
+                 return (
+                 <div key={j.id} className="p-4 bg-slate-900 rounded-2xl border border-slate-700 flex flex-col gap-3 hover:border-blue-500 transition-all">
+                   <div className="flex justify-between items-center">
+                     <span className="text-xs font-bold">{j.title}</span>
+                     <button onClick={() => setJobs(jobs.filter(x => x.id !== j.id))} className="text-slate-600 hover:text-red-500"><Trash2 size={14}/></button>
+                   </div>
+                   <div className="flex justify-between gap-1 mt-1 border-t border-slate-700/50 pt-3">
+                     {DAYS.map(d => {
+                       const isSelected = (j.workingDays || [0, 1, 2, 3, 4, 6]).includes(d.id);
+                       return (
+                         <button key={d.id} onClick={() => toggleJobDay(j.id, d.id)} className={`w-7 h-7 rounded-lg text-[10px] font-black transition-all ${isSelected ? 'bg-blue-600 text-white shadow-md' : 'bg-slate-800 text-slate-500 border border-slate-700 hover:bg-slate-700'}`}>{d.label}</button>
+                       );
+                     })}
+                   </div>
+                 </div>
+               )})}
+            </div>
+          </div>
+        )}
+        {activeTab === 'holidays' && (
+          <div className="space-y-6">
+            <div className="flex justify-between items-center">
+               <h4 className="text-sm font-black text-blue-400 uppercase tracking-widest flex items-center gap-2"><Calendar size={18}/> الإجازات الرسمية</h4>
+            </div>
+            <div className="flex gap-4 bg-slate-900/50 p-6 rounded-3xl border border-slate-700">
+               <input type="date" className={inputClasses} value={newHoliday} onChange={e => setNewHoliday(e.target.value)} />
+               <button onClick={() => { if(newHoliday && !config.holidays?.includes(newHoliday)) { const newConfig = {...config, holidays: [...(config.holidays||[]), newHoliday]}; setConfig(newConfig); localStorage.setItem('attendance_config', JSON.stringify(newConfig)); setNewHoliday(''); } }} className="bg-blue-600 hover:bg-blue-500 text-white rounded-xl px-8 font-black flex items-center gap-2 transition-all shrink-0"><Plus size={20}/> إضافة إجازة</button>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-               {jobs.map(j => (
-                 <div key={j.id} className="p-4 bg-slate-900 rounded-2xl border border-slate-700 flex justify-between items-center hover:border-blue-500 transition-all">
-                   <span className="text-xs font-bold">{j.title}</span>
-                   <button onClick={() => setJobs(jobs.filter(x => x.id !== j.id))} className="text-slate-600 hover:text-red-500"><Trash2 size={14}/></button>
+               {(config.holidays || []).sort().map(h => (
+                 <div key={h} className="p-4 bg-slate-900 rounded-2xl border border-slate-700 flex justify-between items-center hover:border-blue-500 transition-all">
+                   <span className="text-xs font-bold font-mono text-blue-400">{h}</span>
+                   <button onClick={() => { const newConfig = {...config, holidays: config.holidays!.filter(x => x !== h)}; setConfig(newConfig); localStorage.setItem('attendance_config', JSON.stringify(newConfig)); }} className="text-slate-600 hover:text-red-500"><Trash2 size={14}/></button>
                  </div>
                ))}
             </div>
@@ -531,9 +574,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
             <div className="overflow-x-auto mt-6"><table className="w-full text-right"><thead><tr className="border-b border-slate-700 text-[10px] font-black text-slate-500 uppercase tracking-widest"><th className="py-4 px-2">اسم المستخدم</th><th className="py-4 px-2">كلمة المرور</th><th className="py-4 px-2">الوظائف المسموح بها</th><th className="py-4 px-2">الموظفين المسموح بهم</th><th className="py-4 px-2 text-center">إجراءات</th></tr></thead><tbody>{reportAccounts.map(acc => (<tr key={acc.id} className="border-b border-slate-700/50 hover:bg-slate-900/30 transition-all"><td className="py-4 px-2 font-bold text-sm text-white">{editingReportId === acc.id ? (<input className="bg-slate-900 border border-blue-500 rounded px-2 py-1 text-xs w-full text-white" value={editReportData.username || ''} onChange={e => setEditReportData({...editReportData, username: e.target.value})} />) : acc.username}</td><td className="py-4 px-2 font-mono text-xs text-slate-400">{editingReportId === acc.id ? (<input type="text" className="bg-slate-900 border border-blue-500 rounded px-2 py-1 text-xs w-full text-white" value={editReportData.password || ''} onChange={e => setEditReportData({...editReportData, password: e.target.value})} />) : (<div className="flex items-center gap-2">{showPass === acc.id ? acc.password : '••••••••'}<button onClick={() => setShowPass(showPass === acc.id ? null : acc.id)} className="text-slate-600 hover:text-blue-400">{showPass === acc.id ? <EyeOff size={14}/> : <Eye size={14}/>}</button></div>)}</td><td className="py-4 px-2">{editingReportId === acc.id ? (<div className="flex flex-wrap gap-1 max-w-[200px]">{jobs.map(j => (<button key={j.id} onClick={() => { const current = editReportData.allowedJobs || []; if (current.includes(j.title)) { setEditReportData({...editReportData, allowedJobs: current.filter(t => t !== j.title)}); } else { setEditReportData({...editReportData, allowedJobs: [...current, j.title]}); } }} className={`px-1.5 py-0.5 rounded text-[8px] font-black border ${editReportData.allowedJobs?.includes(j.title) ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-400'}`}>{j.title}</button>))}</div>) : (<div className="flex flex-wrap gap-1">{acc.allowedJobs.map((j, i) => <span key={i} className="px-2 py-0.5 bg-blue-900/30 text-blue-400 text-[9px] font-black rounded border border-blue-800/30">{j}</span>)}</div>)}</td><td className="py-4 px-2">{editingReportId === acc.id ? (<div className="flex flex-wrap gap-1 max-w-[200px] max-h-32 overflow-y-auto">{allUsers.filter(u => u.role !== 'admin').map(u => (<button key={u.id} onClick={() => { const current = editReportData.allowedEmployees || []; if (current.includes(u.fullName)) { setEditReportData({...editReportData, allowedEmployees: current.filter(t => t !== u.fullName)}); } else { setEditReportData({...editReportData, allowedEmployees: [...current, u.fullName]}); } }} className={`px-1.5 py-0.5 rounded text-[8px] font-black border ${editReportData.allowedEmployees?.includes(u.fullName) ? 'bg-green-600 text-white' : 'bg-slate-700 text-slate-400'}`}>{u.fullName}</button>))}</div>) : (<div className="flex flex-wrap gap-1 max-h-16 overflow-y-auto">{acc.allowedEmployees && acc.allowedEmployees.length > 0 ? acc.allowedEmployees.map((e, i) => <span key={i} className="px-2 py-0.5 bg-green-900/30 text-green-400 text-[9px] font-black rounded border border-green-800/30">{e}</span>) : <span className="text-[9px] text-slate-600">الكل (حسب الوظيفة)</span>}</div>)}</td><td className="py-4 px-2 text-center"><div className="flex justify-center gap-2">{editingReportId === acc.id ? (<><button onClick={() => saveEditReportAcc(acc.id)} className="text-green-500"><Check size={18}/></button><button onClick={() => setEditingReportId(null)} className="text-red-500"><X size={18}/></button></>) : (<><button onClick={() => { setEditingReportId(acc.id); setEditReportData(acc); }} className="text-blue-400 hover:bg-blue-900/20 p-1.5 rounded"><Edit2 size={16}/></button><button onClick={() => setReportAccounts?.(reportAccounts.filter(x => x.id !== acc.id))} className="text-slate-500 hover:text-red-400 p-1.5"><Trash2 size={16}/></button></>)}</div></td></tr>))}</tbody></table></div>
           </div>
-        )}
-        {activeTab === 'settings' && (
-           <div className="space-y-10 max-w-2xl mx-auto py-4"><div className="space-y-4"><h4 className="text-sm font-black text-orange-400 flex items-center gap-2 tracking-widest uppercase"><Globe size={20}/> الربط السحابي</h4><div className="p-8 bg-slate-900 rounded-3xl border border-slate-700 space-y-6 shadow-inner"><div className="space-y-2"><label className="text-[10px] font-black text-slate-500 uppercase">رابط الـ Web App (Apps Script)</label><input type="text" className={inputClasses} value={syncUrl} onChange={e => setSyncUrl(e.target.value)} placeholder="https://script.google.com/..." /></div></div></div><button onClick={() => { const newConfig = { ...config, adminUsername: adminUser, adminPassword: adminPass, syncUrl: syncUrl, googleSheetLink: syncUrl }; setConfig(newConfig); localStorage.setItem('attendance_config', JSON.stringify(newConfig)); alert("تم حفظ الإعدادات!"); }} className="w-full bg-green-600 hover:bg-green-500 text-white font-black py-5 rounded-2xl shadow-xl transition-all">حفظ التغييرات</button></div>
         )}
       </div>
     </div>
