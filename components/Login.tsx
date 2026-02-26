@@ -21,7 +21,7 @@ export default function Login({
   branches, 
   setAdminConfig 
 }: LoginProps) {
-  const [mode, setMode] = useState<'register' | 'login' | 'admin' | 'connect'>(adminConfig.syncUrl ? 'login' : 'connect');
+  const [mode, setMode] = useState<'register' | 'login' | 'admin'>('login');
   const [fullName, setFullName] = useState('');
   const [nationalId, setNationalId] = useState('');
   const [password, setPassword] = useState('');
@@ -29,20 +29,8 @@ export default function Login({
   const [defaultBranch, setDefaultBranch] = useState('');
   const [adminUsername, setAdminUsername] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
-  const [syncUrlInput, setSyncUrlInput] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-
-  const handleConnect = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!syncUrlInput.startsWith('http')) {
-      setError('يرجى إدخل رابط صحيح يبدأ بـ https://');
-      return;
-    }
-    setAdminConfig({ syncUrl: syncUrlInput, googleSheetLink: syncUrlInput });
-    setMode('register');
-    setError('');
-  };
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -213,14 +201,6 @@ export default function Login({
     }
   };
 
-  const handleUnlink = () => {
-    if (window.confirm('هل أنت متأكد من رغبتك في فك الارتباط بالشركة الحالية؟')) {
-      setAdminConfig({ syncUrl: '', googleSheetLink: '' });
-      setMode('connect');
-      setError('');
-    }
-  };
-
   const inputClasses = "w-full px-4 py-3.5 rounded-2xl border border-slate-600 bg-slate-900 text-white placeholder:text-slate-500 font-bold outline-none focus:border-blue-500 transition-all shadow-inner";
 
   return (
@@ -229,7 +209,7 @@ export default function Login({
         <div className="bg-blue-600 p-8 text-white text-center">
           <h2 className="text-4xl font-black mb-1 italic tracking-tighter uppercase">Uniteam</h2>
           <p className="text-blue-100 text-[10px] font-bold tracking-widest uppercase">
-            {mode === 'connect' ? 'Company Connection' : 'System Access'}
+            System Access
           </p>
         </div>
 
@@ -247,8 +227,8 @@ export default function Login({
               ))}
             </div>
           ) : mode !== 'admin' && (
-            <div className="mb-8 p-4 bg-orange-900/20 border-r-4 border-orange-500 rounded-xl text-right">
-              <p className="text-orange-400 text-xs font-bold leading-relaxed">التطبيق غير مرتبط بشركة حالياً.</p>
+            <div className="mb-8 p-4 bg-blue-900/20 border-r-4 border-blue-500 rounded-xl text-right">
+              <p className="text-blue-400 text-xs font-bold leading-relaxed">جاري الاتصال بالخادم...</p>
             </div>
           )}
 
@@ -269,16 +249,6 @@ export default function Login({
             <div className="mb-6 p-3 bg-blue-900/20 border border-blue-500/50 rounded-2xl flex items-center justify-center gap-2 text-blue-400 text-xs font-bold animate-pulse">
               <Loader2 className="animate-spin" size={16} /> جاري المعالجة والتحقق...
             </div>
-          )}
-
-          {mode === 'connect' && (
-            <form onSubmit={handleConnect} className="space-y-4">
-              <input type="text" placeholder="https://script.google.com/..." value={syncUrlInput} onChange={e => setSyncUrlInput(e.target.value)} className={inputClasses} />
-              <button type="submit" className="w-full bg-blue-600 hover:bg-blue-500 text-white font-black py-4 rounded-2xl shadow-lg flex items-center justify-center gap-2 transition-all">
-                <LinkIcon size={20} /> ربط التطبيق بالشركة
-              </button>
-              <button type="button" onClick={() => setMode('admin')} className="w-full text-slate-500 text-[10px] font-black py-2">أنا مسؤول النظام</button>
-            </form>
           )}
 
           {mode === 'register' && (
@@ -328,7 +298,7 @@ export default function Login({
               <button type="submit" className="w-full bg-slate-700 hover:bg-slate-600 text-white font-black py-4 rounded-2xl shadow-lg flex items-center justify-center gap-2 transition-all border border-slate-500">
                 <ShieldAlert size={20} /> دخول لوحة التحكم
               </button>
-              <button type="button" onClick={() => setMode(adminConfig.syncUrl ? 'login' : 'connect')} className="w-full text-slate-500 text-[10px] font-black py-2">العودة</button>
+              <button type="button" onClick={() => setMode('login')} className="w-full text-slate-500 text-[10px] font-black py-2">العودة</button>
             </form>
           )}
         </div>
