@@ -121,6 +121,8 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [records, setRecords] = useState<any[]>([]);
   const [authorizedUsers, setAuthorizedUsers] = useState<any[]>([]); // New state for users
+  const [fetchedJobs, setFetchedJobs] = useState<any[]>([]);
+  const [fetchedHolidays, setFetchedHolidays] = useState<string[]>([]);
   const [error, setError] = useState('');
   const [showUrlField, setShowUrlField] = useState(!initialSyncUrl);
   const [fromDate, setFromDate] = useState('');
@@ -150,6 +152,8 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
         } else {
            setRecords(data.records || []);
            setAuthorizedUsers(data.users || []);
+           setFetchedJobs(data.jobs || []);
+           setFetchedHolidays(data.holidays || []);
         }
         setIsLoggedIn(true); 
         if (adminConfig && username === adminConfig.adminUsername && password === adminConfig.adminPassword) setIsAdminLogin(true); 
@@ -176,18 +180,22 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
       return;
     }
 
-    const dataToExport = filteredRecords.map(r => ({
-      'Date': new Date(r.date).toLocaleDateString('en-US'),
-      'Time': new Date(r.time).toLocaleTimeString('en-US'),
-      'Employee Name': r.name,
-      'Serial Number': r.serialNumber || 'N/A', 
-      'Job': r.job,
-      'Branch': r.branch,
-      'Type': r.type === 'check-in' ? 'Check-In' : 'Check-Out',
-      'Time Diff': r.timeDiff || '', 
-      'Reason/Notes': r.reason || '',
-      'GPS Location': r.gps
-    }));
+    const dataToExport = filteredRecords.map(r => {
+      const d = new Date(r.date);
+      const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      return {
+        'Date': dateStr,
+        'Time': new Date(r.time).toLocaleTimeString('en-US'),
+        'Employee Name': r.name,
+        'Serial Number': r.serialNumber || 'N/A', 
+        'Job': r.job,
+        'Branch': r.branch,
+        'Type': r.type === 'check-in' ? 'Check-In' : 'Check-Out',
+        'Time Diff': r.timeDiff || '', 
+        'Reason/Notes': r.reason || '',
+        'GPS Location': r.gps
+      };
+    });
 
     const ws = XLSX.utils.json_to_sheet(dataToExport);
     const wb = XLSX.utils.book_new();
@@ -200,22 +208,13 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
     
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const start = new Date(fromDate);
+    const [fy, fm, fd] = fromDate.split('-');
+    const start = new Date(parseInt(fy), parseInt(fm)-1, parseInt(fd));
     start.setHours(0, 0, 0, 0);
-    const selectedEnd = new Date(toDate);
+    const [ty, tm, td] = toDate.split('-');
+    const selectedEnd = new Date(parseInt(ty), parseInt(tm)-1, parseInt(td));
     selectedEnd.setHours(0, 0, 0, 0);
     const actualEnd = selectedEnd > today ? today : selectedEnd;
-
-    let workingDaysCount = 0;
-    const workingDaysSet = new Set<string>();
-    const currentDay = new Date(start);
-    while (currentDay <= actualEnd) {
-      if (currentDay.getDay() !== 5) { // 5 = Friday
-        workingDaysCount++;
-        workingDaysSet.add(currentDay.toISOString().split('T')[0]);
-      }
-      currentDay.setDate(currentDay.getDate() + 1);
-    }
 
     // Determine target users to include (All filtered authorized users, even if they have no records)
     const targetUsers = authorizedUsers.length > 0 ? authorizedUsers.filter(u => {
@@ -248,10 +247,33 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
     usersToProcess.forEach(u => {
       // Use Serial Number as key if available, else Name
       const userId = u.serialNumber && u.serialNumber !== 'undefined' ? u.serialNumber : u.fullName;
+      
+      const userJob = fetchedJobs.find(j => j.title === u.jobTitle);
+      const workingDays = userJob?.workingDays || [0, 1, 2, 3, 4, 6]; // Default all except Friday
+      let userWorkingDaysCount = 0;
+      const userWorkingDaysSet = new Set<string>();
+
+      const currentDay = new Date(start);
+      while (currentDay <= actualEnd) {
+        const dateStr = `${currentDay.getFullYear()}-${String(currentDay.getMonth() + 1).padStart(2, '0')}-${String(currentDay.getDate()).padStart(2, '0')}`;
+        const dayOfWeek = currentDay.getDay();
+        
+        const isWorkingDay = workingDays.includes(dayOfWeek);
+        const isHoliday = fetchedHolidays.includes(dateStr);
+
+        if (isWorkingDay && !isHoliday) {
+          userWorkingDaysCount++;
+          userWorkingDaysSet.add(dateStr);
+        }
+        currentDay.setDate(currentDay.getDate() + 1);
+      }
+
       employeeSummary[userId] = {
             name: u.fullName,
             branchName: u.defaultBranch,
             jobTitle: u.jobTitle,
+            workingDaysCount: userWorkingDaysCount,
+            workingDaysSet: userWorkingDaysSet,
             attendanceDates: new Set<string>(),
             departureDates: new Set<string>(),
             lateArrivalDays: 0,
@@ -271,8 +293,7 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
       if (!employeeSummary[userId]) return;
 
       const recordDateObj = new Date(r.date);
-      recordDateObj.setHours(0, 0, 0, 0);
-      const dateKey = recordDateObj.toISOString().split('T')[0];
+      const dateKey = `${recordDateObj.getFullYear()}-${String(recordDateObj.getMonth() + 1).padStart(2, '0')}-${String(recordDateObj.getDate()).padStart(2, '0')}`;
 
       if (!dailyRecords[userId]) dailyRecords[userId] = {};
       if (!dailyRecords[userId][dateKey]) dailyRecords[userId][dateKey] = {};
@@ -300,11 +321,15 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
         const dayData = dates[dateKey];
         
         // Only count if it's a valid working day
-        if (workingDaysSet.has(dateKey)) {
+        if (s.workingDaysSet.has(dateKey)) {
           // Process First Check-In
           if (dayData.firstIn) {
             s.attendanceDates.add(dateKey); // Count this day for attendance
-            if (dayData.firstIn.timeDiff.includes('متأخر')) {
+            
+            const branchName = dayData.firstIn.branch?.toLowerCase() || '';
+            const isExcludedBranch = branchName.includes('home') || branchName.includes('out door');
+            
+            if (!isExcludedBranch && dayData.firstIn.timeDiff.includes('متأخر')) {
               s.lateArrivalDays++;
               const t = parseTimeStr(dayData.firstIn.timeDiff);
               s.totalLateH += t.h;
@@ -315,14 +340,20 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
           // Process Last Check-Out
           if (dayData.lastOut) {
             s.departureDates.add(dateKey); // Count this day for departure
-            const t = parseTimeStr(dayData.lastOut.timeDiff);
-            if (dayData.lastOut.timeDiff.includes('مبكر')) {
-              s.earlyDepartureDays++;
-              s.totalEarlyH += t.h;
-              s.totalEarlyM += t.m;
-            } else if (dayData.lastOut.timeDiff.includes('متأخر')) {
-              s.totalOvertimeH += t.h;
-              s.totalOvertimeM += t.m;
+            
+            const branchName = dayData.lastOut.branch?.toLowerCase() || '';
+            const isExcludedBranch = branchName.includes('home') || branchName.includes('out door');
+            
+            if (!isExcludedBranch) {
+              const t = parseTimeStr(dayData.lastOut.timeDiff);
+              if (dayData.lastOut.timeDiff.includes('مبكر')) {
+                s.earlyDepartureDays++;
+                s.totalEarlyH += t.h;
+                s.totalEarlyM += t.m;
+              } else if (dayData.lastOut.timeDiff.includes('متأخر')) {
+                s.totalOvertimeH += t.h;
+                s.totalOvertimeM += t.m;
+              }
             }
           }
         }
@@ -340,10 +371,10 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
         'اسم الموظف': s.name,
         'اسم الفرع': s.branchName,
         'الوظيفة': s.jobTitle,
-        'عدد أيام العمل المتاحة': workingDaysCount,
+        'عدد أيام العمل المتاحة': s.workingDaysCount,
         'عدد أيام الحضور': attDaysCount,
         'عدد أيام الانصراف': depDaysCount,
-        'عدد أيام الغياب': Math.max(0, workingDaysCount - Math.max(attDaysCount, depDaysCount)),
+        'عدد أيام الغياب': Math.max(0, s.workingDaysCount - Math.max(attDaysCount, depDaysCount)),
         'عدد أيام الحضور متأخر': s.lateArrivalDays,
         'عدد أيام الانصراف المبكر': s.earlyDepartureDays,
         'ساعات الحضور المتأخر': `${lateTotalH}:${(s.totalLateM % 60).toString().padStart(2, '0')}`,
@@ -356,6 +387,101 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Summary Report");
     XLSX.writeFile(wb, `Summary_${username}_${fromDate}_to_${toDate}.xlsx`);
+  };
+
+  const exportDetailedExcel = () => {
+    if (!fromDate || !toDate) { alert('يرجى تحديد الفترة (من تاريخ / إلى تاريخ) لاستخراج التقرير المفصل'); return; }
+    
+    // Group records by user and date
+    const dailyRecords: Record<string, Record<string, { firstIn?: any, lastOut?: any }>> = {};
+
+    filteredRecords.forEach(r => {
+      const userId = r.serialNumber && r.serialNumber !== 'undefined' ? r.serialNumber : r.name;
+      const recordDateObj = new Date(r.date);
+      const dateKey = `${recordDateObj.getFullYear()}-${String(recordDateObj.getMonth() + 1).padStart(2, '0')}-${String(recordDateObj.getDate()).padStart(2, '0')}`;
+
+      if (!dailyRecords[userId]) dailyRecords[userId] = {};
+      if (!dailyRecords[userId][dateKey]) dailyRecords[userId][dateKey] = {};
+
+      const currentDayData = dailyRecords[userId][dateKey];
+      const recordTime = new Date(r.time).getTime();
+
+      if (r.type === 'check-in') {
+        if (!currentDayData.firstIn || recordTime < new Date(currentDayData.firstIn.time).getTime()) {
+          currentDayData.firstIn = r;
+        }
+      } else if (r.type === 'check-out') {
+        if (!currentDayData.lastOut || recordTime > new Date(currentDayData.lastOut.time).getTime()) {
+          currentDayData.lastOut = r;
+        }
+      }
+    });
+
+    const detailedData: any[] = [];
+
+    Object.keys(dailyRecords).forEach(userId => {
+      const dates = dailyRecords[userId];
+      
+      Object.keys(dates).forEach(dateKey => {
+        const dayData = dates[dateKey];
+        
+        // We need at least one record to show a row
+        if (dayData.firstIn || dayData.lastOut) {
+          const firstIn = dayData.firstIn;
+          const lastOut = dayData.lastOut;
+          
+          // Get common data from either record
+          const commonRecord = firstIn || lastOut;
+          
+          let inStatus = '';
+          if (firstIn) {
+             const branchName = firstIn.branch?.toLowerCase() || '';
+             const isExcludedBranch = branchName.includes('home') || branchName.includes('out door');
+             if (!isExcludedBranch) {
+                 inStatus = firstIn.timeDiff.includes('متأخر') ? 'متأخر' : (firstIn.timeDiff.includes('مبكر') ? 'مبكر' : 'طبيعي');
+             } else {
+                 inStatus = 'مستثنى';
+             }
+          }
+
+          let outStatus = '';
+          if (lastOut) {
+             const branchName = lastOut.branch?.toLowerCase() || '';
+             const isExcludedBranch = branchName.includes('home') || branchName.includes('out door');
+             if (!isExcludedBranch) {
+                 outStatus = lastOut.timeDiff.includes('مبكر') ? 'مبكر' : (lastOut.timeDiff.includes('متأخر') ? 'متأخر' : 'طبيعي');
+             } else {
+                 outStatus = 'مستثنى';
+             }
+          }
+
+          detailedData.push({
+            'الرقم التسلسلي': commonRecord.serialNumber || 'N/A',
+            'اسم الموظف': commonRecord.name,
+            'اليوم': dateKey,
+            'وقت الحضور': firstIn ? new Date(firstIn.time).toLocaleTimeString('en-US') : 'لم يسجل',
+            'فرع الحضور': firstIn ? firstIn.branch : '',
+            'حالة الحضور': inStatus,
+            'وقت الانصراف': lastOut ? new Date(lastOut.time).toLocaleTimeString('en-US') : 'لم يسجل',
+            'فرع الانصراف': lastOut ? lastOut.branch : '',
+            'حالة الانصراف': outStatus
+          });
+        }
+      });
+    });
+
+    // Sort by Date then Name
+    detailedData.sort((a, b) => {
+      if (a['اليوم'] === b['اليوم']) {
+        return a['اسم الموظف'].localeCompare(b['اسم الموظف']);
+      }
+      return a['اليوم'].localeCompare(b['اليوم']);
+    });
+
+    const ws = XLSX.utils.json_to_sheet(detailedData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Detailed Report");
+    XLSX.writeFile(wb, `Detailed_${username}_${fromDate}_to_${toDate}.xlsx`);
   };
 
   const availableJobs = useMemo(() => {
@@ -381,8 +507,18 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
     const rd = new Date(r.date); 
     rd.setHours(0,0,0,0); 
     let m = true; 
-    if (fromDate) { const f = new Date(fromDate); f.setHours(0,0,0,0); m = m && rd >= f; } 
-    if (toDate) { const t = new Date(toDate); t.setHours(0,0,0,0); m = m && rd <= t; } 
+    if (fromDate) { 
+      const [y, mo, d] = fromDate.split('-');
+      const f = new Date(parseInt(y), parseInt(mo)-1, parseInt(d));
+      f.setHours(0,0,0,0); 
+      m = m && rd >= f; 
+    } 
+    if (toDate) { 
+      const [y, mo, d] = toDate.split('-');
+      const t = new Date(parseInt(y), parseInt(mo)-1, parseInt(d));
+      t.setHours(0,0,0,0); 
+      m = m && rd <= t; 
+    } 
     if (selectedJobs.length > 0) m = m && selectedJobs.includes(r.job); 
     if (selectedEmployees.length > 0) m = m && selectedEmployees.includes(r.name);
     if (selectedBranches.length > 0) m = m && selectedBranches.includes(r.branch);
@@ -405,20 +541,6 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
             <p className="text-slate-500 text-[10px] font-black uppercase mt-1">نظام متابعة التقارير والوظائف</p>
           </div>
           <form onSubmit={(e) => {e.preventDefault(); fetchData();}} className="space-y-4">
-            {showUrlField && (
-              <div className="space-y-2 animate-in fade-in slide-in-from-top-2 duration-300">
-                <label className="text-[10px] font-black text-white mr-2 uppercase tracking-widest flex items-center gap-1">
-                  <LinkIcon size={12} /> رابط المزامنة (Sync URL)
-                </label>
-                <input 
-                  type="text" 
-                  placeholder="https://script.google.com/..." 
-                  className="w-full bg-slate-900 border border-slate-700 text-white px-5 py-3.5 rounded-2xl font-bold outline-none focus:border-blue-500 transition-all text-xs shadow-inner" 
-                  value={localSyncUrl} 
-                  onChange={e => setLocalSyncUrl(e.target.value)} 
-                />
-              </div>
-            )}
             <div className="space-y-2">
               <label className="text-[10px] font-black text-white mr-2 uppercase tracking-widest">اسم المستخدم</label>
               <input type="text" className="w-full bg-slate-900 border border-slate-700 text-white px-5 py-3.5 rounded-2xl font-bold outline-none focus:border-blue-500 transition-all shadow-inner" value={username} onChange={e => setUsername(e.target.value)} />
@@ -437,14 +559,6 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
               دخول واستعراض التقارير
             </button>
           </form>
-
-          <button 
-            type="button" 
-            onClick={handleUnlink} 
-            className="mt-6 w-full text-slate-500 hover:text-red-400 text-[10px] font-black py-2 border-t border-slate-700/50 pt-4 uppercase flex items-center justify-center gap-1.5 transition-colors"
-          >
-            <LinkIcon size={12} className="rotate-45" /> تغيير رابط الشركة / فك الارتباط
-          </button>
         </div>
       </div>
     );
@@ -464,6 +578,9 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
             <button type="button" onClick={exportSummaryExcel} className="flex items-center gap-2 px-4 py-3 bg-green-600 hover:bg-green-500 text-white rounded-2xl font-black text-[10px] shadow-xl transition-all">
               <FileSpreadsheet size={14} /> Summary Data
             </button>
+            <button type="button" onClick={exportDetailedExcel} className="flex items-center gap-2 px-4 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl font-black text-[10px] shadow-xl transition-all">
+              <Table size={14} /> Detailed Data
+            </button>
           </div>
         </div>
       </div>
@@ -471,13 +588,6 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
       <div className="bg-slate-800 p-6 rounded-3xl border border-slate-700 shadow-lg space-y-6">
         <div className="flex justify-between items-center border-b border-slate-700 pb-4">
           <h3 className="text-xs font-black text-white flex items-center gap-2 uppercase tracking-widest text-right"><Filter size={14} /> تصفية السجلات قبل التحميل</h3>
-          <button 
-            type="button" 
-            onClick={handleUnlink} 
-            className="text-slate-500 hover:text-red-400 text-[8px] font-black uppercase flex items-center gap-1 transition-colors"
-          >
-            <LinkIcon size={10} className="rotate-45" /> فك الارتباط
-          </button>
         </div>
         
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
