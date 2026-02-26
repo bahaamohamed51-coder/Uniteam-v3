@@ -422,6 +422,11 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
     Object.keys(dailyRecords).forEach(userId => {
       const dates = dailyRecords[userId];
       
+      // Find user to get their job and working days
+      const user = authorizedUsers.find(u => (u.serialNumber && u.serialNumber !== 'undefined' ? u.serialNumber : u.fullName) === userId);
+      const userJob = user ? fetchedJobs.find(j => j.title === user.jobTitle) : null;
+      const workingDays = userJob?.workingDays || [0, 1, 2, 3, 4, 6]; // Default all except Friday
+
       Object.keys(dates).forEach(dateKey => {
         const dayData = dates[dateKey];
         
@@ -433,8 +438,16 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
           // Get common data from either record
           const commonRecord = firstIn || lastOut;
           
+          const recordDateObj = new Date(dateKey);
+          const dayOfWeek = recordDateObj.getDay();
+          const isHoliday = fetchedHolidays.includes(dateKey);
+          const isWorkingDay = workingDays.includes(dayOfWeek);
+          const isOffDay = isHoliday || !isWorkingDay;
+          
           let inStatus = '';
-          if (firstIn) {
+          if (isOffDay) {
+             inStatus = 'اجازة';
+          } else if (firstIn) {
              const branchName = firstIn.branch?.toLowerCase() || '';
              const isExcludedBranch = branchName.includes('home') || branchName.includes('out door');
              if (!isExcludedBranch) {
@@ -445,7 +458,9 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
           }
 
           let outStatus = '';
-          if (lastOut) {
+          if (isOffDay) {
+             outStatus = 'اجازة';
+          } else if (lastOut) {
              const branchName = lastOut.branch?.toLowerCase() || '';
              const isExcludedBranch = branchName.includes('home') || branchName.includes('out door');
              if (!isExcludedBranch) {
