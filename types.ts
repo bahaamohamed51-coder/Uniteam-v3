@@ -10,6 +10,7 @@ export interface Branch {
 export interface Job {
   id: string;
   title: string;
+  workingDays?: number[];
 }
 
 export interface User {
@@ -60,4 +61,5 @@ export interface AppConfig {
   adminUsername: string;
   adminPassword?: string;
   lastUpdated?: string;
+  holidays?: string[];
 }
