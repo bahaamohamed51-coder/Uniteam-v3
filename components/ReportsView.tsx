@@ -392,6 +392,28 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
   const exportDetailedExcel = () => {
     if (!fromDate || !toDate) { alert('يرجى تحديد الفترة (من تاريخ / إلى تاريخ) لاستخراج التقرير المفصل'); return; }
     
+    const [fy, fm, fd] = fromDate.split('-');
+    const start = new Date(parseInt(fy), parseInt(fm)-1, parseInt(fd));
+    start.setHours(0, 0, 0, 0);
+    const [ty, tm, td] = toDate.split('-');
+    const end = new Date(parseInt(ty), parseInt(tm)-1, parseInt(td));
+    end.setHours(0, 0, 0, 0);
+
+    // Determine target users to include (All filtered authorized users)
+    const targetUsers = authorizedUsers.length > 0 ? authorizedUsers.filter(u => {
+        let match = true;
+        if (selectedJobs.length > 0) match = match && selectedJobs.includes(u.jobTitle);
+        if (selectedEmployees.length > 0) match = match && selectedEmployees.includes(u.fullName);
+        if (selectedBranches.length > 0) match = match && selectedBranches.includes(u.defaultBranch);
+        return match;
+    }) : [];
+
+    const usersToProcess = targetUsers.length > 0 ? targetUsers : 
+      Array.from(new Set(filteredRecords.map(r => r.name))).map(name => {
+         const r = filteredRecords.find(x => x.name === name);
+         return { fullName: name, jobTitle: r?.job || 'N/A', defaultBranch: r?.branch || 'N/A', serialNumber: r?.serialNumber || 'N/A' };
+      });
+
     // Group records by user and date
     const dailyRecords: Record<string, Record<string, { firstIn?: any, lastOut?: any }>> = {};
 
@@ -419,30 +441,25 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
 
     const detailedData: any[] = [];
 
-    Object.keys(dailyRecords).forEach(userId => {
-      const dates = dailyRecords[userId];
-      
-      // Find user to get their job and working days
-      const user = authorizedUsers.find(u => (u.serialNumber && u.serialNumber !== 'undefined' ? u.serialNumber : u.fullName) === userId);
-      const userJob = user ? fetchedJobs.find(j => j.title === user.jobTitle) : null;
+    usersToProcess.forEach(u => {
+      const userId = u.serialNumber && u.serialNumber !== 'undefined' ? u.serialNumber : u.fullName;
+      const userJob = fetchedJobs.find(j => j.title === u.jobTitle);
       const workingDays = userJob?.workingDays || [0, 1, 2, 3, 4, 6]; // Default all except Friday
 
-      Object.keys(dates).forEach(dateKey => {
-        const dayData = dates[dateKey];
+      const currentDay = new Date(start);
+      while (currentDay <= end) {
+        const dateKey = `${currentDay.getFullYear()}-${String(currentDay.getMonth() + 1).padStart(2, '0')}-${String(currentDay.getDate()).padStart(2, '0')}`;
+        const dayData = dailyRecords[userId]?.[dateKey];
         
-        // We need at least one record to show a row
-        if (dayData.firstIn || dayData.lastOut) {
-          const firstIn = dayData.firstIn;
-          const lastOut = dayData.lastOut;
-          
-          // Get common data from either record
-          const commonRecord = firstIn || lastOut;
-          
-          const recordDateObj = new Date(dateKey);
-          const dayOfWeek = recordDateObj.getDay();
-          const isHoliday = fetchedHolidays.includes(dateKey);
-          const isWorkingDay = workingDays.includes(dayOfWeek);
-          const isOffDay = isHoliday || !isWorkingDay;
+        const dayOfWeek = currentDay.getDay();
+        const isHoliday = fetchedHolidays.includes(dateKey);
+        const isWorkingDay = workingDays.includes(dayOfWeek);
+        const isOffDay = isHoliday || !isWorkingDay;
+
+        // Show if it's a working day OR if there are records
+        if (isWorkingDay || dayData) {
+          const firstIn = dayData?.firstIn;
+          const lastOut = dayData?.lastOut;
           
           let inStatus = '';
           if (isOffDay) {
@@ -455,6 +472,8 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
              } else {
                  inStatus = 'مستثنى';
              }
+          } else if (isWorkingDay) {
+             inStatus = 'لم يسجل';
           }
 
           let outStatus = '';
@@ -468,11 +487,13 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
              } else {
                  outStatus = 'مستثنى';
              }
+          } else if (isWorkingDay) {
+             outStatus = 'لم يسجل';
           }
 
           detailedData.push({
-            'الرقم التسلسلي': commonRecord.serialNumber || 'N/A',
-            'اسم الموظف': commonRecord.name,
+            'الرقم التسلسلي': u.serialNumber || 'N/A',
+            'اسم الموظف': u.fullName,
             'اليوم': dateKey,
             'وقت الحضور': firstIn ? new Date(firstIn.time).toLocaleTimeString('en-US') : 'لم يسجل',
             'فرع الحضور': firstIn ? firstIn.branch : '',
@@ -482,7 +503,8 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
             'حالة الانصراف': outStatus
           });
         }
-      });
+        currentDay.setDate(currentDay.getDate() + 1);
+      }
     });
 
     // Sort by Date then Name
