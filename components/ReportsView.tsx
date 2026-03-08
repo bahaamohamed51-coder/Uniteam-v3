@@ -219,16 +219,62 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
     // Determine target users to include (All filtered authorized users, even if they have no records)
     const targetUsers = authorizedUsers.length > 0 ? authorizedUsers.filter(u => {
         let match = true;
-        if (selectedJobs.length > 0) match = match && selectedJobs.includes(u.jobTitle);
-        if (selectedEmployees.length > 0) match = match && selectedEmployees.includes(u.fullName);
-        if (selectedBranches.length > 0) match = match && selectedBranches.includes(u.defaultBranch);
+        if (selectedJobs.length > 0) {
+          const selLower = selectedJobs.map(j => j.toLowerCase());
+          match = match && selLower.includes(u.jobTitle?.toString().trim().toLowerCase());
+        }
+        if (selectedEmployees.length > 0) {
+          const selLower = selectedEmployees.map(e => e.toLowerCase());
+          match = match && selLower.includes(u.fullName?.toString().trim().toLowerCase());
+        }
+        if (selectedBranches.length > 0) {
+          const selLower = selectedBranches.map(b => b.toLowerCase());
+          match = match && selLower.includes(u.defaultBranch?.toString().trim().toLowerCase());
+        }
         return match;
     }) : [];
 
+    // Use records but filter them for summary to include "Home" even if branch filter is active
+    const summaryRecords = records.filter(r => {
+      const rd = new Date(r.date);
+      rd.setHours(0,0,0,0);
+      let m = true;
+      if (fromDate) {
+        const [y, mo, d] = fromDate.split('-');
+        const f = new Date(parseInt(y), parseInt(mo)-1, parseInt(d));
+        f.setHours(0,0,0,0);
+        m = m && rd >= f;
+      }
+      if (toDate) {
+        const [y, mo, d] = toDate.split('-');
+        const t = new Date(parseInt(y), parseInt(mo)-1, parseInt(d));
+        t.setHours(0,0,0,0);
+        m = m && rd <= t;
+      }
+      
+      if (selectedJobs.length > 0) {
+        const selLower = selectedJobs.map(j => j.toLowerCase());
+        m = m && selLower.includes(r.job?.toString().trim().toLowerCase());
+      }
+      if (selectedEmployees.length > 0) {
+        const selLower = selectedEmployees.map(e => e.toLowerCase());
+        m = m && selLower.includes(r.name?.toString().trim().toLowerCase());
+      }
+      
+      // Include record if it matches selected branches OR if it is a "Home" or "Out Door" registration
+      if (selectedBranches.length > 0) {
+        const branchLower = r.branch?.toLowerCase() || '';
+        const isHomeOrOut = branchLower.includes('home') || branchLower.includes('out door');
+        const selLower = selectedBranches.map(b => b.toLowerCase());
+        m = m && (selLower.includes(r.branch?.toString().trim().toLowerCase()) || isHomeOrOut);
+      }
+      return m;
+    });
+
     // Fallback if authorizedUsers is empty (old backend), use records
     const usersToProcess = targetUsers.length > 0 ? targetUsers : 
-      Array.from(new Set(filteredRecords.map(r => r.name))).map(name => {
-         const r = filteredRecords.find(x => x.name === name);
+      Array.from(new Set(summaryRecords.map(r => r.name))).map(name => {
+         const r = summaryRecords.find(x => x.name === name);
          return { fullName: name, jobTitle: r?.job || 'N/A', defaultBranch: r?.branch || 'N/A', serialNumber: r?.serialNumber || 'N/A' };
       });
 
@@ -287,7 +333,7 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
     // Populate with attendance records
     const dailyRecords: Record<string, Record<string, { firstIn?: any, lastOut?: any }>> = {};
 
-    filteredRecords.forEach(r => {
+    summaryRecords.forEach(r => {
       const userId = r.serialNumber && r.serialNumber !== 'undefined' ? r.serialNumber : r.name;
       // Skip if this record doesn't belong to our filtered user list (shouldn't happen if filters match, but safety check)
       if (!employeeSummary[userId]) return;
@@ -402,9 +448,18 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
     // Determine target users to include (All filtered authorized users)
     const targetUsers = authorizedUsers.length > 0 ? authorizedUsers.filter(u => {
         let match = true;
-        if (selectedJobs.length > 0) match = match && selectedJobs.includes(u.jobTitle);
-        if (selectedEmployees.length > 0) match = match && selectedEmployees.includes(u.fullName);
-        if (selectedBranches.length > 0) match = match && selectedBranches.includes(u.defaultBranch);
+        if (selectedJobs.length > 0) {
+          const selLower = selectedJobs.map(j => j.toLowerCase());
+          match = match && selLower.includes(u.jobTitle?.toString().trim().toLowerCase());
+        }
+        if (selectedEmployees.length > 0) {
+          const selLower = selectedEmployees.map(e => e.toLowerCase());
+          match = match && selLower.includes(u.fullName?.toString().trim().toLowerCase());
+        }
+        if (selectedBranches.length > 0) {
+          const selLower = selectedBranches.map(b => b.toLowerCase());
+          match = match && selLower.includes(u.defaultBranch?.toString().trim().toLowerCase());
+        }
         return match;
     }) : [];
 
@@ -522,22 +577,39 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
   };
 
   const availableJobs = useMemo(() => {
-    // Merge jobs from records and authorized users
-    const jobsFromRecords = new Set(records.map(r => r.job));
-    const jobsFromUsers = new Set(authorizedUsers.map(u => u.jobTitle));
-    return Array.from(new Set([...jobsFromRecords, ...jobsFromUsers])).filter(Boolean).sort() as string[];
+    const all = [...records.map(r => r.job), ...authorizedUsers.map(u => u.jobTitle)]
+      .map(j => j?.toString().trim().replace(/\s+/g, ' '))
+      .filter(Boolean);
+    const unique = new Map();
+    all.forEach(j => {
+      const key = j.toLowerCase().replace(/[^\w\s\u0600-\u06FF]/g, '');
+      if (!unique.has(key)) unique.set(key, j);
+    });
+    return Array.from(unique.values()).sort();
   }, [records, authorizedUsers]);
 
   const availableEmployees = useMemo(() => {
-    const namesFromRecords = new Set(records.map(r => r.name));
-    const namesFromUsers = new Set(authorizedUsers.map(u => u.fullName));
-    return Array.from(new Set([...namesFromRecords, ...namesFromUsers])).filter(Boolean).sort() as string[];
+    const all = [...records.map(r => r.name), ...authorizedUsers.map(u => u.fullName)]
+      .map(n => n?.toString().trim().replace(/\s+/g, ' '))
+      .filter(Boolean);
+    const unique = new Map();
+    all.forEach(n => {
+      const key = n.toLowerCase().replace(/[^\w\s\u0600-\u06FF]/g, '');
+      if (!unique.has(key)) unique.set(key, n);
+    });
+    return Array.from(unique.values()).sort();
   }, [records, authorizedUsers]);
   
   const availableBranches = useMemo(() => {
-     const branchesFromRecords = new Set(records.map(r => r.branch));
-     const branchesFromUsers = new Set(authorizedUsers.map(u => u.defaultBranch));
-     return Array.from(new Set([...branchesFromRecords, ...branchesFromUsers])).filter(Boolean).sort() as string[];
+     const all = [...records.map(r => r.branch), ...authorizedUsers.map(u => u.defaultBranch)]
+       .map(b => b?.toString().trim().replace(/\s+/g, ' '))
+       .filter(Boolean);
+     const unique = new Map();
+     all.forEach(b => {
+       const key = b.toLowerCase().replace(/[^\w\s\u0600-\u06FF]/g, '');
+       if (!unique.has(key)) unique.set(key, b);
+     });
+     return Array.from(unique.values()).sort();
   }, [records, authorizedUsers]);
 
   const filteredRecords = useMemo(() => records.filter(r => { 
@@ -556,9 +628,19 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
       t.setHours(0,0,0,0); 
       m = m && rd <= t; 
     } 
-    if (selectedJobs.length > 0) m = m && selectedJobs.includes(r.job); 
-    if (selectedEmployees.length > 0) m = m && selectedEmployees.includes(r.name);
-    if (selectedBranches.length > 0) m = m && selectedBranches.includes(r.branch);
+    
+    if (selectedJobs.length > 0) {
+      const selLower = selectedJobs.map(j => j.toLowerCase());
+      m = m && selLower.includes(r.job?.toString().trim().toLowerCase());
+    }
+    if (selectedEmployees.length > 0) {
+      const selLower = selectedEmployees.map(e => e.toLowerCase());
+      m = m && selLower.includes(r.name?.toString().trim().toLowerCase());
+    }
+    if (selectedBranches.length > 0) {
+      const selLower = selectedBranches.map(b => b.toLowerCase());
+      m = m && selLower.includes(r.branch?.toString().trim().toLowerCase());
+    }
     return m; 
   }), [records, fromDate, toDate, selectedJobs, selectedEmployees, selectedBranches]);
 
