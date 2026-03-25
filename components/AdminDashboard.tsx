@@ -18,13 +18,14 @@ interface AdminDashboardProps {
   setReportAccounts?: React.Dispatch<React.SetStateAction<ReportAccount[]>>;
   onRefresh: () => void;
   isSyncing: boolean;
+  logAction: (action: string, details?: string) => void;
 }
 
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
   branches, setBranches, jobs, setJobs, records, config, setConfig, allUsers, setAllUsers, 
-  reportAccounts = [], setReportAccounts, onRefresh, isSyncing
+  reportAccounts = [], setReportAccounts, onRefresh, isSyncing, logAction
 }) => {
-  const [activeTab, setActiveTab] = useState<'branches' | 'jobs' | 'users' | 'report-access' | 'holidays'>('branches');
+  const [activeTab, setActiveTab] = useState<'branches' | 'jobs' | 'users' | 'report-access' | 'holidays' | 'settings'>('branches');
   const [newBranch, setNewBranch] = useState<Partial<Branch>>({ name: '', latitude: 0, longitude: 0, radius: 100 });
   const [newJobTitle, setNewJobTitle] = useState('');
   const [newHoliday, setNewHoliday] = useState('');
@@ -105,13 +106,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           adminPassword: config.adminPassword
         })
       });
+      logAction('حفظ في السحابة', 'تحديث جميع بيانات النظام في جوجل شيت');
       alert("تم إرسال البيانات للسحابة بنجاح!");
     } catch (err) { alert("حدث خطأ أثناء الاتصال بالسحابة"); }
     finally { setIsPushing(false); }
   };
 
   const saveEditUser = (id: string) => {
+    const user = allUsers.find(u => u.id === id);
     setAllUsers(prev => prev.map(u => u.id === id ? { ...u, ...editUserData } as User : u));
+    logAction('تعديل بيانات موظف', `الموظف: ${user?.fullName}`);
     setEditingUserId(null);
   };
 
@@ -119,6 +123,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const shareInviteLink = async () => {
     const link = window.location.origin + window.location.pathname + (config.syncUrl ? `?c=${btoa(config.syncUrl)}` : '');
+    logAction('مشاركة رابط التسجيل', 'تم إنشاء رابط دعوة للموظفين');
     if (navigator.share) { try { await navigator.share({ title: 'نظام الحضور - Uniteam', text: 'رابط تسجيل الموظفين:', url: link }); } catch (err) {} }
     else { navigator.clipboard.writeText(link).then(() => alert("تم نسخ الرابط!")); }
   };
@@ -161,8 +166,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         
         if (type === 'branches') { 
           setBranches(prev => [...prev, ...data.map((item: any) => ({ id: Math.random().toString(36).substr(2, 9), name: item["اسم الفرع"] || 'فرع جديد', latitude: parseFloat(item["خط العرض"] || 0), longitude: parseFloat(item["خط الطول"] || 0), radius: parseInt(item["النطاق بالمتر"] || 100) }))]); 
+          logAction('استيراد فروع', `تم استيراد ${data.length} فرع من ملف إكسل`);
         } else if (type === 'jobs') { 
           setJobs(prev => [...prev, ...data.map((item: any) => ({ id: Math.random().toString(36).substr(2, 9), title: item["اسم الوظيفة"] || 'موظف' }))]); 
+          logAction('استيراد وظائف', `تم استيراد ${data.length} وظيفة من ملف إكسل`);
         } else if (type === 'users') {
           const existingNids = new Set(allUsers.map(u => u.nationalId));
           let duplicateCount = 0;
@@ -195,6 +202,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
           if (newUsers.length > 0) {
             setAllUsers(prev => [...prev, ...newUsers]);
+            logAction('استيراد موظفين', `تم استيراد ${newUsers.length} موظف بنجاح`);
             let msg = `تم استيراد ${newUsers.length} موظف بنجاح.`;
             if (duplicateCount > 0) msg += ` تم تجاهل ${duplicateCount} موظف لوجودهم مسبقاً.`;
             msg += " يرجى النقر على 'حفظ في السحابة' لتأكيد التغييرات.";
@@ -203,6 +211,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             alert("لم يتم استيراد أي موظف. جميع البيانات موجودة مسبقاً أو الملف فارغ.");
           }
         } else {
+           logAction('استيراد بيانات', 'تم استيراد بيانات من ملف إكسل');
            alert("تم استيراد البيانات بنجاح! يرجى النقر على 'حفظ في السحابة' لتأكيد التغييرات.");
         }
       } catch (err) { alert("خطأ في قراءة ملف الإكسل. تأكد من صحة البيانات."); }
@@ -210,7 +219,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }; reader.readAsBinaryString(file);
   };
 
-  const saveEditBranch = (id: string) => { setBranches(prev => prev.map(b => b.id === id ? { ...b, ...editBranchData } as Branch : b)); setEditingBranchId(null); };
+  const saveEditBranch = (id: string) => { 
+    const branch = branches.find(b => b.id === id);
+    setBranches(prev => prev.map(b => b.id === id ? { ...b, ...editBranchData } as Branch : b)); 
+    logAction('تعديل فرع', `الفرع: ${branch?.name}`);
+    setEditingBranchId(null); 
+  };
 
   const addReportAccount = () => {
     if (!newRepUser || !newRepPass || (selectedJobsForAcc.length === 0 && selectedUsersForAcc.length === 0)) return alert("يرجى ملء كافة البيانات واختيار وظيفة أو موظف واحد على الأقل");
@@ -222,6 +236,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       allowedEmployees: selectedUsersForAcc 
     };
     setReportAccounts?.([...reportAccounts, newAcc]); 
+    logAction('إضافة حساب تقارير', `المستخدم: ${newRepUser}`);
     setNewRepUser(''); setNewRepPass(''); setSelectedJobsForAcc([]); setSelectedUsersForAcc([]);
   };
 
@@ -233,7 +248,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       allowedJobs: editReportData.allowedJobs || [],
       allowedEmployees: editReportData.allowedEmployees || []
     };
-    setReportAccounts?.(prev => prev.map(acc => acc.id === id ? { ...acc, ...updatedAcc } as ReportAccount : acc)); setEditingReportId(null);
+    setReportAccounts?.(prev => prev.map(acc => acc.id === id ? { ...acc, ...updatedAcc } as ReportAccount : acc)); 
+    logAction('تعديل حساب تقارير', `المستخدم: ${editReportData.username}`);
+    setEditingReportId(null);
   };
 
   // Branch Bulk Actions
@@ -252,6 +269,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const deleteSelectedBranches = () => {
     if (window.confirm(`هل أنت متأكد من حذف ${selectedBranches.size} فرع؟`)) {
       setBranches(branches.filter(b => !selectedBranches.has(b.id)));
+      logAction('حذف فروع (بالجملة)', `تم حذف ${selectedBranches.size} فرع`);
       setSelectedBranches(new Set());
     }
   };
@@ -270,7 +288,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <p className="text-slate-500 text-[10px] font-black uppercase">لوحة إدارة السحابة</p>
         </div>
         <div className="flex flex-wrap gap-2">
-           <button onClick={onRefresh} disabled={isSyncing} className="flex items-center gap-2 px-5 py-3.5 rounded-2xl font-black bg-slate-900 text-blue-400 border border-blue-900/30 text-xs hover:bg-slate-800 transition-all">
+           <button onClick={() => { onRefresh(); logAction('تحديث البيانات', 'مزامنة البيانات مع السحابة'); }} disabled={isSyncing} className="flex items-center gap-2 px-5 py-3.5 rounded-2xl font-black bg-slate-900 text-blue-400 border border-blue-900/30 text-xs hover:bg-slate-800 transition-all">
              <RefreshCw size={16} className={isSyncing ? 'animate-spin' : ''} /> تحديث البيانات
            </button>
            <button onClick={shareInviteLink} className="flex items-center gap-2 px-5 py-3.5 rounded-2xl font-black bg-blue-600 hover:bg-blue-500 text-white text-xs shadow-xl transition-all">
@@ -288,7 +306,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           { id: 'jobs', label: 'الوظائف', icon: Briefcase },
           { id: 'users', label: 'الموظفين', icon: Users },
           { id: 'holidays', label: 'الإجازات', icon: Calendar },
-          { id: 'report-access', label: 'صلاحيات التقارير', icon: Key }
+          { id: 'report-access', label: 'صلاحيات التقارير', icon: Key },
+          { id: 'settings', label: 'الإعدادات', icon: Monitor }
         ].map(tab => (
           <button
             key={tab.id}
@@ -312,9 +331,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                  <h3 className="text-sm font-black text-white uppercase tracking-tighter">سجل الموظفين</h3>
                </div>
                <div className="flex gap-2">
-                  <button onClick={() => downloadTemplate('users')} className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-xl text-[10px] font-black"><Download size={14}/> نموذج استيراد</button>
+                  <button onClick={() => { downloadTemplate('users'); logAction('تحميل نموذج', 'نموذج استيراد الموظفين'); }} className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-xl text-[10px] font-black"><Download size={14}/> نموذج استيراد</button>
                   <button onClick={() => userFileInputRef.current?.click()} className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-500 rounded-xl text-[10px] font-black"><FileSpreadsheet size={14}/> استيراد موظفين</button>
-                  <button onClick={onRefresh} className="flex items-center gap-2 px-4 py-2 bg-blue-600/10 text-blue-400 border border-blue-900/30 rounded-xl text-[10px] font-black"><RefreshCw size={14} className={isSyncing ? 'animate-spin' : ''} /> تحديث</button>
+                  <button onClick={() => { onRefresh(); logAction('تحديث البيانات', 'مزامنة بيانات الموظفين مع السحابة'); }} className="flex items-center gap-2 px-4 py-2 bg-blue-600/10 text-blue-400 border border-blue-900/30 rounded-xl text-[10px] font-black"><RefreshCw size={14} className={isSyncing ? 'animate-spin' : ''} /> تحديث</button>
                </div>
              </div>
              <div className="overflow-x-auto">
@@ -416,11 +435,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                  <button onClick={() => {
                                    if(confirm('هل أنت متأكد من فك ارتباط جميع الأجهزة لهذا الموظف؟')) {
                                      setAllUsers(allUsers.map(u => u.id === user.id ? {...u, deviceId: "", deviceIds: []} : u));
+                                     logAction('فك ارتباط أجهزة', `الموظف: ${user.fullName}`);
                                    }
                                  }} className="text-orange-400 hover:bg-orange-900/20 p-1.5 rounded" title="فك ارتباط جميع الأجهزة"><Unlink size={16}/></button>
                                )}
                                
-                               <button onClick={() => { if(confirm('حذف الموظف؟')) setAllUsers(allUsers.filter(u => u.id !== user.id)) }} className="text-slate-500 hover:text-red-400 p-1.5"><Trash2 size={16}/></button>
+                               <button onClick={() => { 
+                                 if(confirm('حذف الموظف؟')) {
+                                   setAllUsers(allUsers.filter(u => u.id !== user.id));
+                                   logAction('حذف موظف', `الموظف: ${user.fullName}`);
+                                 }
+                               }} className="text-slate-500 hover:text-red-400 p-1.5"><Trash2 size={16}/></button>
                              </>
                            )}
                         </div>
@@ -442,7 +467,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <Trash2 size={14}/> حذف المحدد ({selectedBranches.size})
                      </button>
                   )}
-                  <button onClick={() => downloadTemplate('branches')} className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-xl text-[10px] font-black"><Download size={14}/> نموذج</button>
+                  <button onClick={() => { downloadTemplate('branches'); logAction('تحميل نموذج', 'نموذج استيراد الفروع'); }} className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-xl text-[10px] font-black"><Download size={14}/> نموذج</button>
                   <button onClick={() => fileInputRef.current?.click()} className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-500 rounded-xl text-[10px] font-black"><FileSpreadsheet size={14}/> استيراد</button>
                </div>
             </div>
@@ -454,6 +479,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                <button onClick={() => {
                  if (newBranch.name) {
                    setBranches([...branches, { ...newBranch, id: Math.random().toString(36).substr(2, 9), radius: newBranch.radius || 100 } as Branch]);
+                   logAction('إضافة فرع جديد', `الفرع: ${newBranch.name}`);
                    setNewBranch({ name: '', latitude: 0, longitude: 0, radius: 100 });
                  }
                }} className="bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-black py-3 flex items-center justify-center gap-2 transition-all">
@@ -471,7 +497,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <td className="py-4 px-2 font-black">{editingBranchId === b.id ? (<input className="bg-slate-900 border border-blue-500 rounded px-3 py-1.5 text-xs w-full outline-none text-white" value={editBranchData.name || ''} onChange={e => setEditBranchData({...editBranchData, name: e.target.value})} />) : (<span className="text-emerald-400">{b.name}</span>)}</td>
                     <td className="py-4 px-2">{editingBranchId === b.id ? (<div className="flex gap-1"><input type="number" step="0.000001" className="bg-slate-900 border border-blue-500 rounded px-2 py-1.5 text-[10px] w-full font-mono outline-none text-white" placeholder="Lat" value={editBranchData.latitude || ''} onChange={e => setEditBranchData({...editBranchData, latitude: parseFloat(e.target.value)})} /><input type="number" step="0.000001" className="bg-slate-900 border border-blue-500 rounded px-2 py-1.5 text-[10px] w-full font-mono outline-none text-white" placeholder="Lng" value={editBranchData.longitude || ''} onChange={e => setEditBranchData({...editBranchData, longitude: parseFloat(e.target.value)})} /></div>) : (<span className="text-[10px] text-slate-400 font-mono">{b.latitude.toFixed(6)}, {b.longitude.toFixed(6)}</span>)}</td>
                     <td className="py-4 px-2 text-center">{editingBranchId === b.id ? (<input type="number" className="bg-slate-900 border border-blue-500 rounded px-2 py-1.5 text-xs w-20 text-center outline-none text-white" value={editBranchData.radius || ''} onChange={e => setEditBranchData({...editBranchData, radius: parseInt(e.target.value)})} />) : (<span className="text-blue-400 font-black text-xs">{b.radius}م</span>)}</td>
-                    <td className="py-4 px-2 text-center"><div className="flex justify-center gap-2">{editingBranchId === b.id ? (<><button onClick={() => saveEditBranch(b.id)} className="text-green-500 hover:bg-green-500/10 p-2 rounded-lg transition-all"><Check size={18}/></button><button onClick={() => setEditingBranchId(null)} className="text-red-500 hover:bg-red-500/10 p-2 rounded-lg transition-all"><X size={18}/></button></>) : (<><button onClick={() => { setEditingBranchId(b.id); setEditBranchData(b); }} className="text-blue-400 hover:bg-blue-400/10 p-2 rounded-lg transition-all"><Edit2 size={16}/></button><button onClick={() => setBranches(branches.filter(x => x.id !== b.id))} className="text-slate-500 hover:text-red-400 hover:bg-red-400/10 p-2 rounded-lg transition-all"><Trash2 size={16}/></button></>)}</div></td>
+                    <td className="py-4 px-2 text-center"><div className="flex justify-center gap-2">{editingBranchId === b.id ? (<><button onClick={() => saveEditBranch(b.id)} className="text-green-500 hover:bg-green-500/10 p-2 rounded-lg transition-all"><Check size={18}/></button><button onClick={() => setEditingBranchId(null)} className="text-red-500 hover:bg-red-500/10 p-2 rounded-lg transition-all"><X size={18}/></button></>) : (<><button onClick={() => { setEditingBranchId(b.id); setEditBranchData(b); }} className="text-blue-400 hover:bg-blue-400/10 p-2 rounded-lg transition-all"><Edit2 size={16}/></button><button onClick={() => { if(confirm('حذف الفرع؟')) { setBranches(branches.filter(x => x.id !== b.id)); logAction('حذف فرع', `الفرع: ${b.name}`); } }} className="text-slate-500 hover:text-red-400 hover:bg-red-400/10 p-2 rounded-lg transition-all"><Trash2 size={16}/></button></>)}</div></td>
                   </tr>
                 ))}</tbody>
               </table>
@@ -483,13 +509,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <div className="flex justify-between items-center">
                <h4 className="text-sm font-black text-blue-400 uppercase tracking-widest">الوظائف المتاحة</h4>
                <div className="flex gap-2">
-                  <button onClick={() => downloadTemplate('jobs')} className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-xl text-[10px] font-black"><Download size={14}/> نموذج</button>
+                  <button onClick={() => { downloadTemplate('jobs'); logAction('تحميل نموذج', 'نموذج استيراد الوظائف'); }} className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-xl text-[10px] font-black"><Download size={14}/> نموذج</button>
                   <button onClick={() => jobFileInputRef.current?.click()} className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-500 rounded-xl text-[10px] font-black"><FileSpreadsheet size={14}/> استيراد</button>
                </div>
             </div>
             <div className="flex gap-4 bg-slate-900/50 p-6 rounded-3xl border border-slate-700">
                <input type="text" placeholder="عنوان الوظيفة" className={inputClasses} value={newJobTitle} onChange={e => setNewJobTitle(e.target.value)} />
-               <button onClick={() => { if(newJobTitle.trim()) { setJobs([...jobs, { id: Math.random().toString(36).substr(2, 9), title: newJobTitle, workingDays: [0, 1, 2, 3, 4, 6] }]); setNewJobTitle(''); } }} className="bg-blue-600 hover:bg-blue-500 text-white rounded-xl px-8 font-black flex items-center gap-2 transition-all"><Plus size={20}/> إضافة</button>
+               <button onClick={() => { if(newJobTitle.trim()) { setJobs([...jobs, { id: Math.random().toString(36).substr(2, 9), title: newJobTitle, workingDays: [0, 1, 2, 3, 4, 6] }]); logAction('إضافة وظيفة جديدة', `الوظيفة: ${newJobTitle}`); setNewJobTitle(''); } }} className="bg-blue-600 hover:bg-blue-500 text-white rounded-xl px-8 font-black flex items-center gap-2 transition-all"><Plus size={20}/> إضافة</button>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                {jobs.map(j => {
@@ -499,7 +525,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                      if (job.id === jobId) {
                        const currentDays = job.workingDays || [0, 1, 2, 3, 4, 6];
                        const newDays = currentDays.includes(dayId) ? currentDays.filter(d => d !== dayId) : [...currentDays, dayId];
-                       return { ...job, workingDays: newDays };
+                        logAction('تعديل أيام عمل الوظيفة', `الوظيفة: ${job.title}, اليوم: ${DAYS.find(d => d.id === dayId)?.label}`);
+                        return { ...job, workingDays: newDays };
                      }
                      return job;
                    }));
@@ -508,7 +535,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                  <div key={j.id} className="p-4 bg-slate-900 rounded-2xl border border-slate-700 flex flex-col gap-3 hover:border-blue-500 transition-all">
                    <div className="flex justify-between items-center">
                      <span className="text-xs font-bold">{j.title}</span>
-                     <button onClick={() => setJobs(jobs.filter(x => x.id !== j.id))} className="text-slate-600 hover:text-red-500"><Trash2 size={14}/></button>
+                     <button onClick={() => { if(confirm('حذف الوظيفة؟')) { setJobs(jobs.filter(x => x.id !== j.id)); logAction('حذف وظيفة', `الوظيفة: ${j.title}`); } }} className="text-slate-600 hover:text-red-500"><Trash2 size={14}/></button>
                    </div>
                    <div className="flex justify-between gap-1 mt-1 border-t border-slate-700/50 pt-3">
                      {DAYS.map(d => {
@@ -530,13 +557,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             </div>
             <div className="flex gap-4 bg-slate-900/50 p-6 rounded-3xl border border-slate-700">
                <input type="date" className={inputClasses} value={newHoliday} onChange={e => setNewHoliday(e.target.value)} />
-               <button onClick={() => { if(newHoliday && !config.holidays?.includes(newHoliday)) { const newConfig = {...config, holidays: [...(config.holidays||[]), newHoliday]}; setConfig(newConfig); localStorage.setItem('attendance_config', JSON.stringify(newConfig)); setNewHoliday(''); } }} className="bg-blue-600 hover:bg-blue-500 text-white rounded-xl px-8 font-black flex items-center gap-2 transition-all shrink-0"><Plus size={20}/> إضافة إجازة</button>
+               <button onClick={() => { if(newHoliday && !config.holidays?.includes(newHoliday)) { const newConfig = {...config, holidays: [...(config.holidays||[]), newHoliday]}; setConfig(newConfig); localStorage.setItem('attendance_config', JSON.stringify(newConfig)); logAction('إضافة إجازة رسمية', `التاريخ: ${newHoliday}`); setNewHoliday(''); } }} className="bg-blue-600 hover:bg-blue-500 text-white rounded-xl px-8 font-black flex items-center gap-2 transition-all shrink-0"><Plus size={20}/> إضافة إجازة</button>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                {(config.holidays || []).sort().map(h => (
                  <div key={h} className="p-4 bg-slate-900 rounded-2xl border border-slate-700 flex justify-between items-center hover:border-blue-500 transition-all">
                    <span className="text-xs font-bold font-mono text-blue-400">{h}</span>
-                   <button onClick={() => { const newConfig = {...config, holidays: config.holidays!.filter(x => x !== h)}; setConfig(newConfig); localStorage.setItem('attendance_config', JSON.stringify(newConfig)); }} className="text-slate-600 hover:text-red-500"><Trash2 size={14}/></button>
+                   <button onClick={() => { if(confirm('حذف الإجازة؟')) { const newConfig = {...config, holidays: config.holidays!.filter(x => x !== h)}; setConfig(newConfig); localStorage.setItem('attendance_config', JSON.stringify(newConfig)); logAction('حذف إجازة رسمية', `التاريخ: ${h}`); } }} className="text-slate-600 hover:text-red-500"><Trash2 size={14}/></button>
                  </div>
                ))}
             </div>
@@ -549,7 +576,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4"><input type="text" placeholder="اسم المستخدم" className={inputClasses} value={newRepUser} onChange={e => setNewRepUser(e.target.value)} /><input type="password" placeholder="كلمة المرور" className={inputClasses} value={newRepPass} onChange={e => setNewRepPass(e.target.value)} /></div>
               
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-500 mr-2 uppercase flex items-center gap-1"><Briefcase size={12}/> الوظائف المسموح بمتابعتها</label>
+                <div className="flex justify-between items-center mr-2">
+                  <label className="text-[10px] font-black text-slate-500 uppercase flex items-center gap-1"><Briefcase size={12}/> الوظائف المسموح بمتابعتها</label>
+                  <div className="flex gap-2">
+                    <button onClick={() => setSelectedJobsForAcc(jobs.map(j => j.title))} className="text-[9px] text-blue-400 hover:text-blue-300 font-black">تحديد الكل</button>
+                    <button onClick={() => setSelectedJobsForAcc([])} className="text-[9px] text-slate-500 hover:text-slate-400 font-black">إلغاء الكل</button>
+                  </div>
+                </div>
                 <div className="flex flex-wrap gap-2 p-4 bg-slate-900 border border-slate-700 rounded-xl h-24 overflow-y-auto scrollbar-hide">
                   {jobs.map(j => (
                     <button key={j.id} onClick={() => { if (selectedJobsForAcc.includes(j.title)) { setSelectedJobsForAcc(selectedJobsForAcc.filter(t => t !== j.title)); } else { setSelectedJobsForAcc([...selectedJobsForAcc, j.title]); } }} className={`px-3 py-1.5 rounded-lg text-[10px] font-black transition-all border ${selectedJobsForAcc.includes(j.title) ? 'bg-blue-600 text-white border-blue-500' : 'bg-slate-800 text-slate-500 border-slate-700 hover:text-slate-300'}`}>
@@ -560,7 +593,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
 
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-500 mr-2 uppercase flex items-center gap-1"><UserCheck size={12}/> الموظفين المسموح بمتابعتهم (تحديد خاص)</label>
+                <div className="flex justify-between items-center mr-2">
+                  <label className="text-[10px] font-black text-slate-500 uppercase flex items-center gap-1"><UserCheck size={12}/> الموظفين المسموح بمتابعتهم (تحديد خاص)</label>
+                  <div className="flex gap-2">
+                    <button onClick={() => setSelectedUsersForAcc(allUsers.filter(u => u.role !== 'admin').map(u => u.fullName))} className="text-[9px] text-green-400 hover:text-green-300 font-black">تحديد الكل</button>
+                    <button onClick={() => setSelectedUsersForAcc([])} className="text-[9px] text-slate-500 hover:text-slate-400 font-black">إلغاء الكل</button>
+                  </div>
+                </div>
                 <div className="flex flex-wrap gap-2 p-4 bg-slate-900 border border-slate-700 rounded-xl h-24 overflow-y-auto scrollbar-hide">
                   {allUsers.filter(u => u.role !== 'admin').map(u => (
                     <button key={u.id} onClick={() => { if (selectedUsersForAcc.includes(u.fullName)) { setSelectedUsersForAcc(selectedUsersForAcc.filter(t => t !== u.fullName)); } else { setSelectedUsersForAcc([...selectedUsersForAcc, u.fullName]); } }} className={`px-3 py-1.5 rounded-lg text-[10px] font-black transition-all border ${selectedUsersForAcc.includes(u.fullName) ? 'bg-green-600 text-white border-green-500' : 'bg-slate-800 text-slate-500 border-slate-700 hover:text-slate-300'}`}>
@@ -572,7 +611,144 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
               <button onClick={addReportAccount} className="w-full bg-blue-600 hover:bg-blue-500 text-white font-black py-4 rounded-xl flex items-center justify-center gap-2 shadow-lg transition-all"><Plus size={20} /> إنشاء الحساب</button>
             </div>
-            <div className="overflow-x-auto mt-6"><table className="w-full text-right"><thead><tr className="border-b border-slate-700 text-[10px] font-black text-slate-500 uppercase tracking-widest"><th className="py-4 px-2">اسم المستخدم</th><th className="py-4 px-2">كلمة المرور</th><th className="py-4 px-2">الوظائف المسموح بها</th><th className="py-4 px-2">الموظفين المسموح بهم</th><th className="py-4 px-2 text-center">إجراءات</th></tr></thead><tbody>{reportAccounts.map(acc => (<tr key={acc.id} className="border-b border-slate-700/50 hover:bg-slate-900/30 transition-all"><td className="py-4 px-2 font-bold text-sm text-white">{editingReportId === acc.id ? (<input className="bg-slate-900 border border-blue-500 rounded px-2 py-1 text-xs w-full text-white" value={editReportData.username || ''} onChange={e => setEditReportData({...editReportData, username: e.target.value})} />) : acc.username}</td><td className="py-4 px-2 font-mono text-xs text-slate-400">{editingReportId === acc.id ? (<input type="text" className="bg-slate-900 border border-blue-500 rounded px-2 py-1 text-xs w-full text-white" value={editReportData.password || ''} onChange={e => setEditReportData({...editReportData, password: e.target.value})} />) : (<div className="flex items-center gap-2">{showPass === acc.id ? acc.password : '••••••••'}<button onClick={() => setShowPass(showPass === acc.id ? null : acc.id)} className="text-slate-600 hover:text-blue-400">{showPass === acc.id ? <EyeOff size={14}/> : <Eye size={14}/>}</button></div>)}</td><td className="py-4 px-2">{editingReportId === acc.id ? (<div className="flex flex-wrap gap-1 max-w-[200px]">{jobs.map(j => (<button key={j.id} onClick={() => { const current = editReportData.allowedJobs || []; if (current.includes(j.title)) { setEditReportData({...editReportData, allowedJobs: current.filter(t => t !== j.title)}); } else { setEditReportData({...editReportData, allowedJobs: [...current, j.title]}); } }} className={`px-1.5 py-0.5 rounded text-[8px] font-black border ${editReportData.allowedJobs?.includes(j.title) ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-400'}`}>{j.title}</button>))}</div>) : (<div className="flex flex-wrap gap-1">{acc.allowedJobs.map((j, i) => <span key={i} className="px-2 py-0.5 bg-blue-900/30 text-blue-400 text-[9px] font-black rounded border border-blue-800/30">{j}</span>)}</div>)}</td><td className="py-4 px-2">{editingReportId === acc.id ? (<div className="flex flex-wrap gap-1 max-w-[200px] max-h-32 overflow-y-auto">{allUsers.filter(u => u.role !== 'admin').map(u => (<button key={u.id} onClick={() => { const current = editReportData.allowedEmployees || []; if (current.includes(u.fullName)) { setEditReportData({...editReportData, allowedEmployees: current.filter(t => t !== u.fullName)}); } else { setEditReportData({...editReportData, allowedEmployees: [...current, u.fullName]}); } }} className={`px-1.5 py-0.5 rounded text-[8px] font-black border ${editReportData.allowedEmployees?.includes(u.fullName) ? 'bg-green-600 text-white' : 'bg-slate-700 text-slate-400'}`}>{u.fullName}</button>))}</div>) : (<div className="flex flex-wrap gap-1 max-h-16 overflow-y-auto">{acc.allowedEmployees && acc.allowedEmployees.length > 0 ? acc.allowedEmployees.map((e, i) => <span key={i} className="px-2 py-0.5 bg-green-900/30 text-green-400 text-[9px] font-black rounded border border-green-800/30">{e}</span>) : <span className="text-[9px] text-slate-600">الكل (حسب الوظيفة)</span>}</div>)}</td><td className="py-4 px-2 text-center"><div className="flex justify-center gap-2">{editingReportId === acc.id ? (<><button onClick={() => saveEditReportAcc(acc.id)} className="text-green-500"><Check size={18}/></button><button onClick={() => setEditingReportId(null)} className="text-red-500"><X size={18}/></button></>) : (<><button onClick={() => { setEditingReportId(acc.id); setEditReportData(acc); }} className="text-blue-400 hover:bg-blue-900/20 p-1.5 rounded"><Edit2 size={16}/></button><button onClick={() => setReportAccounts?.(reportAccounts.filter(x => x.id !== acc.id))} className="text-slate-500 hover:text-red-400 p-1.5"><Trash2 size={16}/></button></>)}</div></td></tr>))}</tbody></table></div>
+            <div className="overflow-x-auto mt-6">
+              <table className="w-full text-right">
+                <thead>
+                  <tr className="border-b border-slate-700 text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                    <th className="py-4 px-2">اسم المستخدم</th>
+                    <th className="py-4 px-2">كلمة المرور</th>
+                    <th className="py-4 px-2">الوظائف المسموح بها</th>
+                    <th className="py-4 px-2">الموظفين المسموح بهم</th>
+                    <th className="py-4 px-2 text-center">إجراءات</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {reportAccounts.map(acc => (
+                    <tr key={acc.id} className="border-b border-slate-700/50 hover:bg-slate-900/30 transition-all">
+                      <td className="py-4 px-2 font-bold text-sm text-white">
+                        {editingReportId === acc.id ? (
+                          <input className="bg-slate-900 border border-blue-500 rounded px-2 py-1 text-xs w-full text-white" value={editReportData.username || ''} onChange={e => setEditReportData({...editReportData, username: e.target.value})} />
+                        ) : acc.username}
+                      </td>
+                      <td className="py-4 px-2 font-mono text-xs text-slate-400">
+                        {editingReportId === acc.id ? (
+                          <input type="text" className="bg-slate-900 border border-blue-500 rounded px-2 py-1 text-xs w-full text-white" value={editReportData.password || ''} onChange={e => setEditReportData({...editReportData, password: e.target.value})} />
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            {showPass === acc.id ? acc.password : '••••••••'}
+                            <button onClick={() => setShowPass(showPass === acc.id ? null : acc.id)} className="text-slate-600 hover:text-blue-400">
+                              {showPass === acc.id ? <EyeOff size={14}/> : <Eye size={14}/>}
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                      <td className="py-4 px-2">
+                        {editingReportId === acc.id ? (
+                          <div className="space-y-2">
+                            <div className="flex justify-between items-center px-1">
+                              <button onClick={() => setEditReportData({...editReportData, allowedJobs: jobs.map(j => j.title)})} className="text-[8px] text-blue-400 font-black">الكل</button>
+                              <button onClick={() => setEditReportData({...editReportData, allowedJobs: []})} className="text-[8px] text-slate-500 font-black">إلغاء</button>
+                            </div>
+                            <div className="flex flex-wrap gap-1 max-w-[200px]">
+                              {jobs.map(j => (
+                                <button key={j.id} onClick={() => { 
+                                  const current = editReportData.allowedJobs || []; 
+                                  if (current.includes(j.title)) { 
+                                    setEditReportData({...editReportData, allowedJobs: current.filter(t => t !== j.title)}); 
+                                  } else { 
+                                    setEditReportData({...editReportData, allowedJobs: [...current, j.title]}); 
+                                  } 
+                                }} className={`px-1.5 py-0.5 rounded text-[8px] font-black border ${editReportData.allowedJobs?.includes(j.title) ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-400'}`}>
+                                  {j.title}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex flex-wrap gap-1">
+                            {acc.allowedJobs.map((j, i) => <span key={i} className="px-2 py-0.5 bg-blue-900/30 text-blue-400 text-[9px] font-black rounded border border-blue-800/30">{j}</span>)}
+                          </div>
+                        )}
+                      </td>
+                      <td className="py-4 px-2">
+                        {editingReportId === acc.id ? (
+                          <div className="space-y-2">
+                            <div className="flex justify-between items-center px-1">
+                              <button onClick={() => setEditReportData({...editReportData, allowedEmployees: allUsers.filter(u => u.role !== 'admin').map(u => u.fullName)})} className="text-[8px] text-green-400 font-black">الكل</button>
+                              <button onClick={() => setEditReportData({...editReportData, allowedEmployees: []})} className="text-[8px] text-slate-500 font-black">إلغاء</button>
+                            </div>
+                            <div className="flex flex-wrap gap-1 max-w-[200px] max-h-32 overflow-y-auto">
+                              {allUsers.filter(u => u.role !== 'admin').map(u => (
+                                <button key={u.id} onClick={() => { 
+                                  const current = editReportData.allowedEmployees || []; 
+                                  if (current.includes(u.fullName)) { 
+                                    setEditReportData({...editReportData, allowedEmployees: current.filter(t => t !== u.fullName)}); 
+                                  } else { 
+                                    setEditReportData({...editReportData, allowedEmployees: [...current, u.fullName]}); 
+                                  } 
+                                }} className={`px-1.5 py-0.5 rounded text-[8px] font-black border ${editReportData.allowedEmployees?.includes(u.fullName) ? 'bg-green-600 text-white' : 'bg-slate-700 text-slate-400'}`}>
+                                  {u.fullName}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex flex-wrap gap-1 max-h-16 overflow-y-auto">
+                            {acc.allowedEmployees && acc.allowedEmployees.length > 0 ? acc.allowedEmployees.map((e, i) => <span key={i} className="px-2 py-0.5 bg-green-900/30 text-green-400 text-[9px] font-black rounded border border-green-800/30">{e}</span>) : <span className="text-[9px] text-slate-600">الكل (حسب الوظيفة)</span>}
+                          </div>
+                        )}
+                      </td>
+                      <td className="py-4 px-2 text-center">
+                        <div className="flex justify-center gap-2">
+                          {editingReportId === acc.id ? (
+                            <>
+                              <button onClick={() => saveEditReportAcc(acc.id)} className="text-green-500"><Check size={18}/></button>
+                              <button onClick={() => setEditingReportId(null)} className="text-red-500"><X size={18}/></button>
+                            </>
+                          ) : (
+                            <>
+                              <button onClick={() => { setEditingReportId(acc.id); setEditReportData(acc); }} className="text-blue-400 hover:bg-blue-900/20 p-1.5 rounded"><Edit2 size={16}/></button>
+                              <button onClick={() => { if(confirm('حذف حساب التقارير؟')) { setReportAccounts?.(reportAccounts.filter(x => x.id !== acc.id)); logAction('حذف حساب تقارير', `المستخدم: ${acc.username}`); } }} className="text-slate-500 hover:text-red-400 p-1.5"><Trash2 size={16}/></button>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+        {activeTab === 'settings' && (
+          <div className="space-y-6">
+            <h4 className="text-sm font-black text-blue-400 flex items-center gap-2 uppercase tracking-widest"><Monitor size={20}/> إعدادات النظام المتقدمة</h4>
+            <div className="bg-slate-900/50 p-6 rounded-3xl border border-slate-700 space-y-6">
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-500 uppercase flex items-center gap-1">رابط ملف سجل المراقبة (Audit Log Sheet ID)</label>
+                <input 
+                  type="text" 
+                  placeholder="اتركه فارغاً لاستخدام نفس الملف الحالي، أو ضع ID لملف آخر" 
+                  className={inputClasses} 
+                  value={config.auditLogUrl || ''} 
+                  onChange={e => setConfig({...config, auditLogUrl: e.target.value})} 
+                />
+                <p className="text-[9px] text-slate-500 font-bold italic">ملاحظة: إذا كنت تريد استخدام ملف منفصل، قم بإنشاء ملف Google Sheet جديد وانسخ الـ ID الخاص به وضعه هنا.</p>
+              </div>
+              
+              <div className="pt-4 border-t border-slate-700">
+                <button 
+                  onClick={() => {
+                    localStorage.setItem('attendance_config', JSON.stringify(config));
+                    alert('تم حفظ الإعدادات بنجاح');
+                    logAction('تحديث إعدادات النظام', 'تغيير إعدادات سجل المراقبة');
+                  }} 
+                  className="w-full bg-blue-600 hover:bg-blue-500 text-white font-black py-4 rounded-xl flex items-center justify-center gap-2 shadow-lg transition-all"
+                >
+                  <Check size={20} /> حفظ الإعدادات
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>
