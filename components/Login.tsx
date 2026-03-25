@@ -11,6 +11,7 @@ interface LoginProps {
   availableJobs: Job[];
   branches: Branch[];
   setAdminConfig: (cfg: Partial<AppConfig>) => void;
+  logAction: (action: string, details?: string) => void;
 }
 
 export default function Login({ 
@@ -19,7 +20,8 @@ export default function Login({
   adminConfig, 
   availableJobs, 
   branches, 
-  setAdminConfig 
+  setAdminConfig,
+  logAction
 }: LoginProps) {
   const [mode, setMode] = useState<'register' | 'login' | 'admin'>('login');
   const [fullName, setFullName] = useState('');
@@ -111,6 +113,7 @@ export default function Login({
     }
 
     setIsLoading(false);
+    logAction('تسجيل مستخدم جديد', `الموظف: ${fullName}, الوظيفة: ${selectedJob}`);
     onLogin(newUser);
   };
 
@@ -149,6 +152,7 @@ export default function Login({
 
       if (userDevices.includes(currentDeviceId)) {
         // Device is already linked -> Allow Login
+        logAction('تسجيل دخول موظف', `الموظف: ${user.fullName}, الرقم القومي: ${user.nationalId}`);
         onLogin(user);
       } else {
         // Device not linked, check if we can add it
@@ -184,10 +188,12 @@ export default function Login({
           onLogin(updatedUser);
         } else {
           // Limit reached
+          logAction('فشل تسجيل دخول (تجاوز عدد الأجهزة)', `الموظف: ${user.fullName}, الجهاز: ${currentDeviceId}`);
           setError(`عذراً، لقد تجاوزت الحد المسموح من الأجهزة (${userDevices.length}/${maxDevices}). يرجى التواصل مع المسؤول.`);
         }
       }
     } else {
+      logAction('فشل تسجيل دخول موظف', `الرقم القومي: ${nationalId}`);
       setError('بيانات الدخول غير صحيحة، تأكد من الرقم القومي وكلمة المرور');
     }
   };
@@ -195,8 +201,10 @@ export default function Login({
   const handleAdminSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (adminUsername === adminConfig.adminUsername && adminPassword === adminConfig.adminPassword) {
+      logAction('تسجيل دخول مسؤول', `المسؤول: ${adminUsername}`);
       onLogin({ id: 'admin-id', fullName: 'المسؤول', nationalId: '000', role: 'admin' });
     } else {
+      logAction('فشل تسجيل دخول مسؤول', `المحاولة باسم: ${adminUsername}`);
       setError('بيانات المسؤول غير صحيحة');
     }
   };
@@ -306,4 +314,5 @@ export default function Login({
     </div>
   );
 }
+
 
