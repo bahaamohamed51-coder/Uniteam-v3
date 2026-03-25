@@ -8,6 +8,7 @@ interface ReportsViewProps {
   syncUrl: string;
   adminConfig: AppConfig;
   onUpdateConfig?: (cfg: Partial<AppConfig>) => void;
+  logAction?: (action: string, details?: string) => void;
 }
 
 const MultiSelect = ({ label, options, selected, onToggle, placeholder, icon: Icon }: { label: string, options: string[], selected: string[], onToggle: (val: string) => void, placeholder: string, icon: any }) => {
@@ -111,7 +112,7 @@ const CustomDatePicker = ({ label, value, onChange, placeholder }: { label: stri
   );
 };
 
-export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUpdateConfig }: ReportsViewProps) {
+export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUpdateConfig, logAction }: ReportsViewProps) {
   const [localSyncUrl, setLocalSyncUrl] = useState(initialSyncUrl || localStorage.getItem('attendance_temp_sync_url') || '');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -156,6 +157,7 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
            setFetchedHolidays(data.holidays || []);
         }
         setIsLoggedIn(true); 
+        logAction?.('تسجيل دخول متابع تقارير', `المستخدم: ${username}`);
         if (adminConfig && username === adminConfig.adminUsername && password === adminConfig.adminPassword) setIsAdminLogin(true); 
         else setIsAdminLogin(false); 
         localStorage.setItem('attendance_temp_sync_url', activeSyncUrl); 
@@ -200,6 +202,7 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
     const ws = XLSX.utils.json_to_sheet(dataToExport);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Attendance Report");
+    logAction?.('تحميل تقرير (All Data)', `الفترة: ${fromDate} إلى ${toDate}`);
     XLSX.writeFile(wb, `AllData_${username}_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
@@ -432,6 +435,7 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
     const ws = XLSX.utils.json_to_sheet(summaryData);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Summary Report");
+    logAction?.('تحميل تقرير (Summary)', `الفترة: ${fromDate} إلى ${toDate}`);
     XLSX.writeFile(wb, `Summary_${username}_${fromDate}_to_${toDate}.xlsx`);
   };
 
@@ -573,6 +577,7 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
     const ws = XLSX.utils.json_to_sheet(detailedData);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Detailed Report");
+    logAction?.('تحميل تقرير (Detailed)', `الفترة: ${fromDate} إلى ${toDate}`);
     XLSX.writeFile(wb, `Detailed_${username}_${fromDate}_to_${toDate}.xlsx`);
   };
 
@@ -689,7 +694,7 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
         <div className="text-right w-full md:w-auto"><h2 className="text-xl font-black text-blue-400 flex items-center gap-2">{isAdminLogin ? <ShieldCheck size={24} className="text-orange-400" /> : <Table size={24} />} متابعة التقارير والوظائف {isAdminLogin && <span className="text-[10px] text-orange-400 bg-orange-400/10 px-2 py-0.5 rounded-lg border border-orange-400/20 mr-2">Admin Mode</span>}</h2><p className="text-slate-500 text-[10px] font-black uppercase">المسؤول: {username}</p></div>
         <div className="flex flex-wrap gap-2 justify-center">
           <button type="button" onClick={() => fetchData(false)} disabled={isRefreshing} className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-blue-400 border border-slate-700 rounded-xl text-[10px] font-black hover:bg-slate-700 transition-all"><RefreshCw size={14} className={isRefreshing ? 'animate-spin' : ''} /> تحديث البيانات</button>
-          <button type="button" onClick={() => setIsLoggedIn(false)} className="px-4 py-2 bg-slate-900/50 text-slate-400 border border-slate-700/50 rounded-xl text-[10px] font-black hover:text-red-400">خروج</button>
+          <button type="button" onClick={() => { setIsLoggedIn(false); logAction?.('تسجيل خروج متابع تقارير', `المستخدم: ${username}`); }} className="px-4 py-2 bg-slate-900/50 text-slate-400 border border-slate-700/50 rounded-xl text-[10px] font-black hover:text-red-400">خروج</button>
           <div className="flex gap-1">
             <button type="button" onClick={exportToExcel} className="flex items-center gap-2 px-4 py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-2xl font-black text-[10px] shadow-xl transition-all border border-slate-600">
               <Download size={14} /> All Data
