@@ -13,6 +13,7 @@ interface UserDashboardProps {
   onRefresh: () => void;
   isSyncing: boolean;
   lastUpdated?: string;
+  logAction: (action: string, details?: string) => void;
 }
 
 const UserDashboard: React.FC<UserDashboardProps> = ({ 
@@ -23,7 +24,8 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
   googleSheetLink, 
   onRefresh, 
   isSyncing, 
-  lastUpdated 
+  lastUpdated,
+  logAction
 }) => {
   const findInitialBranchId = () => {
     if (!user.defaultBranchId) return '';
@@ -167,7 +169,6 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
     // 2. Location Confirmation Logic
     let lat = 0;
     let lng = 0;
-    let accuracy = 0;
 
     // Check if we have a fresh background location (less than 60 seconds old)
     const isBackgroundLocationFresh = liveLocation && (Date.now() - liveLocation.timestamp < 60000);
@@ -175,7 +176,6 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
     if (isBackgroundLocationFresh && liveLocation) {
         lat = liveLocation.lat;
         lng = liveLocation.lng;
-        accuracy = liveLocation.accuracy;
     } else {
         try {
             const position = await new Promise<GeolocationPosition>((resolve, reject) => {
@@ -187,7 +187,6 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
             });
             lat = position.coords.latitude;
             lng = position.coords.longitude;
-            accuracy = position.coords.accuracy;
             setLiveLocation({
                 lat, lng, accuracy: position.coords.accuracy, timestamp: position.timestamp
             });
@@ -197,17 +196,6 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
             return;
         }
     }
-
-    // --- GPS Accuracy Check (Anti-Spoofing & Signal Quality) ---
-    if (accuracy <= 0 || accuracy > 500) {
-        setStatus({ 
-            type: 'error', 
-            msg: `إشارة الـ GPS غير دقيقة أو مشبوهة (الدقة: ${Math.round(accuracy)} متر). يرجى الوقوف في مكان مفتوح وإغلاق أي برامج لتغيير الموقع ثم المحاولة مرة أخرى.` 
-        });
-        setIsVerifying(false);
-        return;
-    }
-    // -----------------------------------------------------------
 
     // 3. Client-Side Checks
     const branch = branches.find(b => b.id === selectedBranchId);
@@ -267,9 +255,17 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
                     const savedConfig = localStorage.getItem('attendance_config');
                     if (savedConfig) {
                         const parsed = JSON.parse(savedConfig);
+                        let changed = false;
                         if (parsed.googleSheetLink !== activeLink) {
                             parsed.googleSheetLink = activeLink;
                             parsed.syncUrl = activeLink;
+                            changed = true;
+                        }
+                        if (configData.auditLogUrl !== undefined && parsed.auditLogUrl !== configData.auditLogUrl) {
+                            parsed.auditLogUrl = configData.auditLogUrl;
+                            changed = true;
+                        }
+                        if (changed) {
                             localStorage.setItem('attendance_config', JSON.stringify(parsed));
                         }
                     }
@@ -330,6 +326,7 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
              throw new Error("OLD_OR_INVALID_CODE");
           }
         
+        logAction(`تسجيل ${type === 'check-in' ? 'حضور' : 'انصراف'}`, `الفرع: ${branch.name}, المسافة: ${Math.round(distance)}م, الحالة: ${timeInfo.resultString}`);
         // Only update local state if all checks passed
         setRecords(prev => [...prev, newRecord]);
         setStatus({ type: 'success', msg: `تم تسجيل ${type === 'check-in' ? 'الحضور' : 'الانصراف'} بنجاح. (${timeInfo.resultString})` });
@@ -352,6 +349,7 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
             errorMsg = 'تعذر الوصول للسيرفر. تأكد من اتصال الإنترنت أو صحة الرابط.';
         }
 
+        logAction(`فشل تسجيل ${type === 'check-in' ? 'حضور' : 'انصراف'}`, `السبب: ${errorMsg}`);
         setStatus({ type: 'error', msg: errorMsg });
     } finally {
         setIsVerifying(false);
@@ -365,7 +363,7 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
       <div className="lg:col-span-2 space-y-6">
         <div className="bg-slate-800 rounded-3xl shadow-xl border border-slate-700 p-8 text-white relative overflow-hidden">
           <div className="absolute left-2 top-6 flex flex-col items-end gap-2">
-            <button onClick={onRefresh} disabled={isSyncing} className="p-2.5 bg-slate-900 rounded-xl border border-slate-700 text-slate-400 hover:text-blue-400 transition-all shadow-lg active:scale-95">
+            <button onClick={() => { onRefresh(); logAction('تحديث البيانات', 'مزامنة البيانات مع السحابة'); }} disabled={isSyncing} className="p-2.5 bg-slate-900 rounded-xl border border-slate-700 text-slate-400 hover:text-blue-400 transition-all shadow-lg active:scale-95">
               <RotateCcw size={20} className={isSyncing ? 'animate-spin text-blue-400' : ''} />
             </button>
             <div className="h-12"></div>
