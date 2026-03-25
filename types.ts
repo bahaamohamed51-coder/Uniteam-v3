@@ -58,6 +58,7 @@ export interface AttendanceRecord {
 export interface AppConfig {
   googleSheetLink: string;
   syncUrl: string;
+  auditLogUrl?: string; // New: URL for the audit log sheet (optional if same as syncUrl)
   adminUsername: string;
   adminPassword?: string;
   lastUpdated?: string;
