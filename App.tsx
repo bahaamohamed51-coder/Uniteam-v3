@@ -27,12 +27,14 @@ const App: React.FC = () => {
 
   const [config, setConfig] = useState<AppConfig>(() => {
     const saved = localStorage.getItem('attendance_config');
-    return saved ? JSON.parse(saved) : { 
+    const defaultConfig = { 
       googleSheetLink: '',
       syncUrl: '',
+      auditLogUrl: '',
       adminUsername: 'admin',
       adminPassword: 'B522129'
     };
+    return saved ? { ...defaultConfig, ...JSON.parse(saved) } : defaultConfig;
   });
 
   useEffect(() => {
@@ -172,12 +174,17 @@ const App: React.FC = () => {
             const saved = localStorage.getItem('attendance_config');
             const currentConfig = saved ? JSON.parse(saved) : null;
             
-            if (!currentConfig || data.googleSheetLink !== currentConfig.syncUrl) {
+            const hasChanges = !currentConfig || 
+                              data.googleSheetLink !== currentConfig.syncUrl || 
+                              (data.auditLogUrl !== undefined && data.auditLogUrl !== currentConfig.auditLogUrl);
+
+            if (hasChanges) {
               setConfig(prev => {
                 const updatedConfig = { 
                   ...prev, 
                   syncUrl: data.googleSheetLink, 
-                  googleSheetLink: data.googleSheetLink 
+                  googleSheetLink: data.googleSheetLink,
+                  auditLogUrl: data.auditLogUrl !== undefined ? data.auditLogUrl : prev.auditLogUrl
                 };
                 localStorage.setItem('attendance_config', JSON.stringify(updatedConfig));
                 return updatedConfig;
@@ -214,6 +221,30 @@ const App: React.FC = () => {
     setConfig(cfg);
     localStorage.setItem('attendance_config', JSON.stringify(cfg));
   };
+
+  const logAction = useCallback(async (action: string, details: string = '') => {
+    if (!config.syncUrl) return;
+    
+    try {
+      const payload = {
+        action: 'logAudit',
+        user: currentUser ? `${currentUser.fullName} (${currentUser.role})` : 'Guest',
+        auditAction: action,
+        details: details,
+        deviceInfo: navigator.userAgent,
+        spreadsheetId: config.auditLogUrl || ''
+      };
+      
+      await fetch(config.syncUrl, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+    } catch (e) {
+      console.error('Audit Log Error:', e);
+    }
+  }, [config.syncUrl, config.auditLogUrl, currentUser]);
 
   // Determine if we should show an install button (Android or iOS web)
   const showInstallButton = !isInStandaloneMode && (installPrompt || isIos);
@@ -298,13 +329,14 @@ const App: React.FC = () => {
 
       <main className="flex-1 max-w-5xl w-full mx-auto p-4 md:p-6 pb-24">
         {activeView === 'reports' && !currentUser ? (
-          <ReportsView syncUrl={config.syncUrl} adminConfig={config} onUpdateConfig={handleUpdateConfig} />
+          <ReportsView syncUrl={config.syncUrl} adminConfig={config} onUpdateConfig={handleUpdateConfig} logAction={logAction} />
         ) : (
           !currentUser ? (
             <Login 
               onLogin={handleLogin} allUsers={allUsers} adminConfig={config} availableJobs={jobs}
               branches={branches} 
               setAdminConfig={handleUpdateConfig}
+              logAction={logAction}
             />
           ) : (
             currentUser.role === 'admin' ? (
@@ -313,12 +345,14 @@ const App: React.FC = () => {
                 records={records} config={config} setConfig={setConfig} allUsers={allUsers} setAllUsers={setAllUsers}
                 reportAccounts={reportAccounts} setReportAccounts={setReportAccounts}
                 onRefresh={() => syncWithCloud(config.syncUrl)} isSyncing={isSyncing}
+                logAction={logAction}
               />
             ) : (
               <UserDashboard 
                 user={currentUser} branches={branches} records={records} setRecords={setRecords}
                 googleSheetLink={config.googleSheetLink} onRefresh={() => syncWithCloud(config.syncUrl)}
                 isSyncing={isSyncing} lastUpdated={config.lastUpdated}
+                logAction={logAction}
               />
             )
           )
@@ -388,3 +422,4 @@ const App: React.FC = () => {
 };
 
 export default App;
+
