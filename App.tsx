@@ -206,22 +206,6 @@ const App: React.FC = () => {
   useEffect(() => { localStorage.setItem('attendance_branches', JSON.stringify(branches)); }, [branches]);
   useEffect(() => { localStorage.setItem('attendance_jobs', JSON.stringify(jobs)); }, [jobs]);
 
-  const handleLogin = (user: User) => {
-    setCurrentUser(user);
-    localStorage.setItem('attendance_current_user', JSON.stringify(user));
-  };
-
-  const handleLogout = () => {
-    setCurrentUser(null);
-    localStorage.removeItem('attendance_current_user');
-  };
-
-  const handleUpdateConfig = (newCfg: Partial<AppConfig>) => {
-    const cfg = { ...config, ...newCfg };
-    setConfig(cfg);
-    localStorage.setItem('attendance_config', JSON.stringify(cfg));
-  };
-
   const logAction = useCallback(async (action: string, details: string = '') => {
     if (!config.syncUrl) return;
     
@@ -245,6 +229,25 @@ const App: React.FC = () => {
       console.error('Audit Log Error:', e);
     }
   }, [config.syncUrl, config.auditLogUrl, currentUser]);
+
+  const handleLogin = (user: User) => {
+    setCurrentUser(user);
+    localStorage.setItem('attendance_current_user', JSON.stringify(user));
+  };
+
+  const handleLogout = () => {
+    if (currentUser) {
+      logAction('تسجيل خروج', `المستخدم: ${currentUser.fullName} (${currentUser.role})`);
+    }
+    setCurrentUser(null);
+    localStorage.removeItem('attendance_current_user');
+  };
+
+  const handleUpdateConfig = (newCfg: Partial<AppConfig>) => {
+    const cfg = { ...config, ...newCfg };
+    setConfig(cfg);
+    localStorage.setItem('attendance_config', JSON.stringify(cfg));
+  };
 
   // Determine if we should show an install button (Android or iOS web)
   const showInstallButton = !isInStandaloneMode && (installPrompt || isIos);
