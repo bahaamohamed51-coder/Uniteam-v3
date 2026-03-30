@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { User, Branch, AttendanceRecord, AppConfig, Job, ReportAccount } from './types';
+import { User, Branch, AttendanceRecord, AppConfig, Job, ReportAccount, VisitPlan } from './types';
 import Login from './components/Login';
 import AdminDashboard from './components/AdminDashboard';
 import UserDashboard from './components/UserDashboard';
@@ -14,6 +14,7 @@ const App: React.FC = () => {
   const [reportAccounts, setReportAccounts] = useState<ReportAccount[]>([]);
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [allUsers, setAllUsers] = useState<User[]>([]);
+  const [visitPlans, setVisitPlans] = useState<VisitPlan[]>([]);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncError, setSyncError] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -95,10 +96,32 @@ const App: React.FC = () => {
       if (!response.ok) throw new Error('فشل الاتصال');
       const data = await response.json();
       
-      if (data.branches) setBranches(data.branches);
-      if (data.jobs) setJobs(data.jobs);
+      if (data.branches) {
+        setBranches(data.branches);
+        localStorage.setItem('attendance_branches', JSON.stringify(data.branches));
+      }
+      if (data.jobs) {
+        setJobs(data.jobs);
+        localStorage.setItem('attendance_jobs', JSON.stringify(data.jobs));
+      }
       if (data.reportAccounts) setReportAccounts(data.reportAccounts);
-      if (data.users && Array.isArray(data.users)) setAllUsers(data.users);
+      if (data.users && Array.isArray(data.users)) {
+        setAllUsers(data.users);
+        localStorage.setItem('attendance_users', JSON.stringify(data.users));
+        
+        // Update current user if already logged in
+        if (currentUser && currentUser.role !== 'admin') {
+          const updatedUser = data.users.find((u: User) => u.id === currentUser.id);
+          if (updatedUser) {
+            setCurrentUser(updatedUser);
+            localStorage.setItem('attendance_current_user', JSON.stringify(updatedUser));
+          }
+        }
+      }
+      if (data.visitPlans) {
+        setVisitPlans(data.visitPlans);
+        localStorage.setItem('attendance_visit_plans', JSON.stringify(data.visitPlans));
+      }
       
       const updatedConfig = { ...config, lastUpdated: new Date().toISOString(), syncUrl: url, googleSheetLink: url };
       if (data.holidays) updatedConfig.holidays = data.holidays;
@@ -116,9 +139,13 @@ const App: React.FC = () => {
     const savedUser = localStorage.getItem('attendance_current_user');
     const savedBranches = localStorage.getItem('attendance_branches');
     const savedJobs = localStorage.getItem('attendance_jobs');
+    const savedPlans = localStorage.getItem('attendance_visit_plans');
+    const savedUsers = localStorage.getItem('attendance_users');
     if (savedUser) setCurrentUser(JSON.parse(savedUser));
     if (savedBranches) setBranches(JSON.parse(savedBranches));
     if (savedJobs) setJobs(JSON.parse(savedJobs));
+    if (savedPlans) setVisitPlans(JSON.parse(savedPlans));
+    if (savedUsers) setAllUsers(JSON.parse(savedUsers));
     
     // Check URL params for cloud link
     const params = new URLSearchParams(window.location.search);
@@ -205,6 +232,7 @@ const App: React.FC = () => {
 
   useEffect(() => { localStorage.setItem('attendance_branches', JSON.stringify(branches)); }, [branches]);
   useEffect(() => { localStorage.setItem('attendance_jobs', JSON.stringify(jobs)); }, [jobs]);
+  useEffect(() => { localStorage.setItem('attendance_visit_plans', JSON.stringify(visitPlans)); }, [visitPlans]);
 
   const logAction = useCallback(async (action: string, details: string = '') => {
     if (!config.syncUrl) return;
@@ -347,12 +375,14 @@ const App: React.FC = () => {
                 branches={branches} setBranches={setBranches} jobs={jobs} setJobs={setJobs}
                 records={records} config={config} setConfig={setConfig} allUsers={allUsers} setAllUsers={setAllUsers}
                 reportAccounts={reportAccounts} setReportAccounts={setReportAccounts}
+                visitPlans={visitPlans} setVisitPlans={setVisitPlans}
                 onRefresh={() => syncWithCloud(config.syncUrl)} isSyncing={isSyncing}
                 logAction={logAction}
               />
             ) : (
               <UserDashboard 
                 user={currentUser} branches={branches} records={records} setRecords={setRecords}
+                visitPlans={visitPlans}
                 googleSheetLink={config.googleSheetLink} onRefresh={() => syncWithCloud(config.syncUrl)}
                 isSyncing={isSyncing} lastUpdated={config.lastUpdated}
                 logAction={logAction}
