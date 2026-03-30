@@ -186,6 +186,25 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
             const serial = (item["الرقم التسلسلي للموظف"] || "").toString().trim();
             const user = allUsers.find(u => u.serialNumber === serial || u.id === serial);
             const branch = branches.find(b => b.name === (item["اسم الفرع"] || ""));
+            
+            let dateVal = (item["التاريخ"] || "").toString().trim();
+            // Normalize date to YYYY-MM-DD
+            if (dateVal) {
+              const d = new Date(dateVal);
+              if (!isNaN(d.getTime())) {
+                const year = d.getFullYear();
+                const month = String(d.getMonth() + 1).padStart(2, '0');
+                const day = String(d.getDate()).padStart(2, '0');
+                dateVal = `${year}-${month}-${day}`;
+              }
+            } else {
+              const d = new Date();
+              const year = d.getFullYear();
+              const month = String(d.getMonth() + 1).padStart(2, '0');
+              const day = String(d.getDate()).padStart(2, '0');
+              dateVal = `${year}-${month}-${day}`;
+            }
+
             if (user && branch) {
               return {
                 id: Math.random().toString(36).substr(2, 9),
@@ -193,14 +212,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 userName: user.fullName,
                 branchId: branch.id,
                 branchName: branch.name,
-                date: (item["التاريخ"] || "").toString().trim() || new Date().toLocaleDateString('en-CA')
+                date: dateVal
               };
             }
             return null;
           }).filter(p => p !== null) as VisitPlan[];
           setVisitPlans(prev => [...prev, ...newPlans]);
           logAction('استيراد خطط زيارات', `تم استيراد ${newPlans.length} خطة زيارة`);
-          alert(`تم استيراد ${newPlans.length} خطة زيارة بنجاح`);
+          alert(`تم استيراد ${newPlans.length} خطة زيارة بنجاح. يرجى النقر على 'حفظ في السحابة' لتأكيد التغييرات.`);
         } else if (type === 'users') {
           const existingNids = new Set(allUsers.map(u => u.nationalId));
           let duplicateCount = 0;
