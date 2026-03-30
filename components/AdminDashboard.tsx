@@ -46,8 +46,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [editReportData, setEditReportData] = useState<Partial<ReportAccount>>({});
   const [editingBranchId, setEditingBranchId] = useState<string | null>(null);
   const [editBranchData, setEditBranchData] = useState<Partial<Branch>>({});
-  const [adminUser, setAdminUser] = useState(config.adminUsername);
-  const [adminPass, setAdminPass] = useState(config.adminPassword || '');
   const [syncUrl, setSyncUrl] = useState(config.syncUrl || '');
   
   // State for Branch Bulk Delete
@@ -854,6 +852,27 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   onChange={e => setConfig({...config, auditLogUrl: e.target.value})} 
                 />
                 <p className="text-[9px] text-slate-500 font-bold italic">ملاحظة: إذا كنت تريد استخدام ملف منفصل، قم بإنشاء ملف Google Sheet جديد وانسخ الـ ID الخاص به وضعه هنا.</p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-slate-700">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-500 uppercase flex items-center gap-1">اسم مستخدم المسؤول (Admin Username)</label>
+                  <input 
+                    type="text" 
+                    className={inputClasses} 
+                    value={config.adminUsername || ''} 
+                    onChange={e => setConfig({...config, adminUsername: e.target.value})} 
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-500 uppercase flex items-center gap-1">كلمة مرور المسؤول (Admin Password)</label>
+                  <input 
+                    type="text" 
+                    className={inputClasses} 
+                    value={config.adminPassword || ''} 
+                    onChange={e => setConfig({...config, adminPassword: e.target.value})} 
+                  />
+                </div>
               </div>
               
               <div className="pt-4 border-t border-slate-700">
