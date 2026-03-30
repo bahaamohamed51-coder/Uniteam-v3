@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { User, Branch, AttendanceRecord } from '../types';
-import { MapPin, Clock, CheckCircle, AlertCircle, RotateCcw, Cloud, FileText } from 'lucide-react';
+import { User, Branch, AttendanceRecord, VisitPlan } from '../types';
+import { MapPin, Clock, CheckCircle, AlertCircle, RotateCcw, Cloud, FileText, Navigation } from 'lucide-react';
 import { calculateDistance, getDeviceFingerprint } from '../utils';
 
 interface UserDashboardProps {
@@ -14,6 +14,7 @@ interface UserDashboardProps {
   isSyncing: boolean;
   lastUpdated?: string;
   logAction: (action: string, details?: string) => void;
+  visitPlans: VisitPlan[];
 }
 
 const UserDashboard: React.FC<UserDashboardProps> = ({ 
@@ -25,7 +26,8 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
   onRefresh, 
   isSyncing, 
   lastUpdated,
-  logAction
+  logAction,
+  visitPlans
 }) => {
   const findInitialBranchId = () => {
     if (!user.defaultBranchId) return '';
@@ -358,6 +360,10 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
 
   const myRecords = records.filter(r => r.userId === user.id).slice(-5).reverse();
 
+  // Find today's plan for this user
+  const todayStr = new Date().toLocaleDateString('en-CA'); // Returns YYYY-MM-DD in local time
+  const todayPlan = visitPlans.find(p => p.userId === user.id && p.date === todayStr);
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
       <div className="lg:col-span-2 space-y-6">
@@ -374,6 +380,26 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
              <div className="bg-blue-900/30 px-5 py-1.5 rounded-xl text-blue-400 border border-blue-800/40 font-black text-[10px] inline-block uppercase tracking-widest">{user.jobTitle || 'موظف'} | SN: {user.serialNumber || '---'}</div>
              <div className="text-5xl font-black text-white mt-10 mb-2 tracking-tighter drop-shadow-2xl">{currentTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</div>
              <div className="text-slate-500 font-bold text-xs uppercase tracking-widest">{currentTime.toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long' })}</div>
+             
+             {todayPlan && (
+                <div className="mt-6 p-4 bg-blue-600/20 border border-blue-500/30 rounded-2xl flex items-center justify-between gap-4 max-w-sm mx-auto animate-pulse">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-blue-600 rounded-xl">
+                      <Navigation size={18} className="text-white" />
+                    </div>
+                    <div className="text-right">
+                      <div className="text-[10px] font-black text-blue-400 uppercase tracking-widest">خطة اليوم</div>
+                      <div className="text-sm font-black text-white">{todayPlan.branchName}</div>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => setSelectedBranchId(todayPlan.branchId)}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-[10px] font-black transition-all"
+                  >
+                    اختيار الفرع
+                  </button>
+                </div>
+              )}
              <div className="mt-4 flex justify-center gap-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">
                 <span className="bg-slate-900 px-3 py-1 rounded-lg border border-slate-700">موعد الحضور: {formatTimeDisplay(user.checkInTime || '09:00')}</span>
                 <span className="bg-slate-900 px-3 py-1 rounded-lg border border-slate-700">موعد الانصراف: {formatTimeDisplay(user.checkOutTime || '17:00')}</span>
