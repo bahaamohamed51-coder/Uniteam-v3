@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Branch, AttendanceRecord, AppConfig, User, Job, ReportAccount } from '../types';
-import { MapPin, Table, Trash2, Shield, CloudUpload, Briefcase, RotateCcw, Globe, Users, Plus, FileSpreadsheet, Download, Share2, Smartphone, RefreshCw, Edit2, Check, X, Unlink, Key, Lock, Eye, EyeOff, Clock, Monitor, UserCheck, Calendar } from 'lucide-react';
+import { Branch, AttendanceRecord, AppConfig, User, Job, ReportAccount, VisitPlan } from '../types';
+import { MapPin, Table, Trash2, Shield, CloudUpload, Briefcase, RotateCcw, Globe, Users, Plus, FileSpreadsheet, Download, Share2, Smartphone, RefreshCw, Edit2, Check, X, Unlink, Key, Lock, Eye, EyeOff, Clock, Monitor, UserCheck, Calendar, Navigation } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
 interface AdminDashboardProps {
@@ -16,6 +16,8 @@ interface AdminDashboardProps {
   setAllUsers: React.Dispatch<React.SetStateAction<User[]>>;
   reportAccounts?: ReportAccount[];
   setReportAccounts?: React.Dispatch<React.SetStateAction<ReportAccount[]>>;
+  visitPlans: VisitPlan[];
+  setVisitPlans: React.Dispatch<React.SetStateAction<VisitPlan[]>>;
   onRefresh: () => void;
   isSyncing: boolean;
   logAction: (action: string, details?: string) => void;
@@ -23,9 +25,9 @@ interface AdminDashboardProps {
 
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ 
   branches, setBranches, jobs, setJobs, records, config, setConfig, allUsers, setAllUsers, 
-  reportAccounts = [], setReportAccounts, onRefresh, isSyncing, logAction
+  reportAccounts = [], setReportAccounts, visitPlans, setVisitPlans, onRefresh, isSyncing, logAction
 }) => {
-  const [activeTab, setActiveTab] = useState<'branches' | 'jobs' | 'users' | 'report-access' | 'holidays' | 'settings'>('branches');
+  const [activeTab, setActiveTab] = useState<'branches' | 'jobs' | 'users' | 'plans' | 'report-access' | 'holidays' | 'settings'>('branches');
   const [newBranch, setNewBranch] = useState<Partial<Branch>>({ name: '', latitude: 0, longitude: 0, radius: 100 });
   const [newJobTitle, setNewJobTitle] = useState('');
   const [newHoliday, setNewHoliday] = useState('');
@@ -54,6 +56,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const jobFileInputRef = useRef<HTMLInputElement>(null);
   const userFileInputRef = useRef<HTMLInputElement>(null);
+  const planFileInputRef = useRef<HTMLInputElement>(null);
 
   // وظيفة لتنسيق الوقت للعرض (AM/PM)
   const formatTimeDisplay = (timeStr: string | undefined) => {
@@ -101,6 +104,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           jobs: jobs,
           users: allUsers,
           reportAccounts: reportAccounts,
+          visitPlans: visitPlans,
           holidays: config.holidays || [],
           adminUsername: config.adminUsername,
           adminPassword: config.adminPassword
@@ -128,7 +132,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     else { navigator.clipboard.writeText(link).then(() => alert("تم نسخ الرابط!")); }
   };
 
-  const downloadTemplate = (type: 'branches' | 'jobs' | 'users') => {
+  const downloadTemplate = (type: 'branches' | 'jobs' | 'users' | 'plans') => {
     let data: any[] = [];
     let fileName = "";
     
@@ -136,7 +140,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       data = [{ "اسم الفرع": "الفرع الرئيسي", "خط العرض": 30.05, "خط الطول": 31.23, "النطاق بالمتر": 100 }];
       fileName = "template_branches.xlsx";
     } else if (type === 'jobs') {
-      data = [{ "اسم الوظيفة": "مهندس" }];
+      data = [{ "اسم الوظيفة": "مهندس", "زيارة فروع متعددة": "نعم" }];
       fileName = "template_jobs.xlsx";
     } else if (type === 'users') {
       data = [{
@@ -150,6 +154,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         "عدد الاجهزة": 1
       }];
       fileName = "template_users.xlsx";
+    } else if (type === 'plans') {
+      data = [{
+        "الرقم التسلسلي للموظف": "2024001",
+        "اسم الفرع": "فرع المعادي",
+        "التاريخ": "2026-03-30"
+      }];
+      fileName = "template_plans.xlsx";
     }
     
     const ws = XLSX.utils.json_to_sheet(data);
@@ -158,7 +169,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     XLSX.writeFile(wb, fileName);
   };
 
-  const handleExcelImport = (e: React.ChangeEvent<HTMLInputElement>, type: 'branches' | 'jobs' | 'users') => {
+  const handleExcelImport = (e: React.ChangeEvent<HTMLInputElement>, type: 'branches' | 'jobs' | 'users' | 'plans') => {
     const file = e.target.files?.[0]; if (!file) return;
     const reader = new FileReader(); reader.onload = (evt) => {
       try {
@@ -168,8 +179,28 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           setBranches(prev => [...prev, ...data.map((item: any) => ({ id: Math.random().toString(36).substr(2, 9), name: item["اسم الفرع"] || 'فرع جديد', latitude: parseFloat(item["خط العرض"] || 0), longitude: parseFloat(item["خط الطول"] || 0), radius: parseInt(item["النطاق بالمتر"] || 100) }))]); 
           logAction('استيراد فروع', `تم استيراد ${data.length} فرع من ملف إكسل`);
         } else if (type === 'jobs') { 
-          setJobs(prev => [...prev, ...data.map((item: any) => ({ id: Math.random().toString(36).substr(2, 9), title: item["اسم الوظيفة"] || 'موظف' }))]); 
+          setJobs(prev => [...prev, ...data.map((item: any) => ({ id: Math.random().toString(36).substr(2, 9), title: item["اسم الوظيفة"] || 'موظف', canVisitMultipleBranches: item["زيارة فروع متعددة"] === "نعم" }))]); 
           logAction('استيراد وظائف', `تم استيراد ${data.length} وظيفة من ملف إكسل`);
+        } else if (type === 'plans') {
+          const newPlans = data.map((item: any) => {
+            const serial = (item["الرقم التسلسلي للموظف"] || "").toString().trim();
+            const user = allUsers.find(u => u.serialNumber === serial || u.id === serial);
+            const branch = branches.find(b => b.name === (item["اسم الفرع"] || ""));
+            if (user && branch) {
+              return {
+                id: Math.random().toString(36).substr(2, 9),
+                userId: user.id,
+                userName: user.fullName,
+                branchId: branch.id,
+                branchName: branch.name,
+                date: (item["التاريخ"] || "").toString().trim() || new Date().toLocaleDateString('en-CA')
+              };
+            }
+            return null;
+          }).filter(p => p !== null) as VisitPlan[];
+          setVisitPlans(prev => [...prev, ...newPlans]);
+          logAction('استيراد خطط زيارات', `تم استيراد ${newPlans.length} خطة زيارة`);
+          alert(`تم استيراد ${newPlans.length} خطة زيارة بنجاح`);
         } else if (type === 'users') {
           const existingNids = new Set(allUsers.map(u => u.nationalId));
           let duplicateCount = 0;
@@ -279,6 +310,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       <input type="file" ref={fileInputRef} className="hidden" accept=".xlsx, .xls" onChange={(e) => handleExcelImport(e, 'branches')} />
       <input type="file" ref={jobFileInputRef} className="hidden" accept=".xlsx, .xls" onChange={(e) => handleExcelImport(e, 'jobs')} />
       <input type="file" ref={userFileInputRef} className="hidden" accept=".xlsx, .xls" onChange={(e) => handleExcelImport(e, 'users')} />
+      <input type="file" ref={planFileInputRef} className="hidden" accept=".xlsx, .xls" onChange={(e) => handleExcelImport(e, 'plans')} />
 
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-slate-800 p-6 rounded-3xl border border-slate-700 shadow-xl">
         <div className="text-white">
@@ -305,6 +337,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           { id: 'branches', label: 'الفروع', icon: MapPin },
           { id: 'jobs', label: 'الوظائف', icon: Briefcase },
           { id: 'users', label: 'الموظفين', icon: Users },
+          { id: 'plans', label: 'خطط الزيارات', icon: Navigation },
           { id: 'holidays', label: 'الإجازات', icon: Calendar },
           { id: 'report-access', label: 'صلاحيات التقارير', icon: Key },
           { id: 'settings', label: 'الإعدادات', icon: Monitor }
@@ -535,7 +568,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                  <div key={j.id} className="p-4 bg-slate-900 rounded-2xl border border-slate-700 flex flex-col gap-3 hover:border-blue-500 transition-all">
                    <div className="flex justify-between items-center">
                      <span className="text-xs font-bold">{j.title}</span>
-                     <button onClick={() => { if(confirm('حذف الوظيفة؟')) { setJobs(jobs.filter(x => x.id !== j.id)); logAction('حذف وظيفة', `الوظيفة: ${j.title}`); } }} className="text-slate-600 hover:text-red-500"><Trash2 size={14}/></button>
+                     <div className="flex items-center gap-2">
+                        <button 
+                          onClick={() => {
+                            setJobs(jobs.map(job => job.id === j.id ? { ...job, canVisitMultipleBranches: !job.canVisitMultipleBranches } : job));
+                            logAction('تعديل صلاحية التنقل', `الوظيفة: ${j.title}`);
+                          }}
+                          className={`p-1.5 rounded-lg transition-all ${j.canVisitMultipleBranches ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-500'}`}
+                          title="السماح بزيارة فروع متعددة"
+                        >
+                          <Navigation size={14} />
+                        </button>
+                        <button onClick={() => { if(confirm('حذف الوظيفة؟')) { setJobs(jobs.filter(x => x.id !== j.id)); logAction('حذف وظيفة', `الوظيفة: ${j.title}`); } }} className="text-slate-600 hover:text-red-500"><Trash2 size={14}/></button>
+                      </div>
                    </div>
                    <div className="flex justify-between gap-1 mt-1 border-t border-slate-700/50 pt-3">
                      {DAYS.map(d => {
@@ -547,6 +592,62 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                    </div>
                  </div>
                )})}
+            </div>
+          </div>
+        )}
+        {activeTab === 'plans' && (
+          <div className="space-y-6">
+            <div className="flex justify-between items-center bg-slate-900/50 p-4 rounded-2xl border border-slate-700">
+              <div className="flex items-center gap-3">
+                <Navigation size={20} className="text-blue-400" />
+                <h3 className="text-sm font-black text-white uppercase tracking-tighter">خطط زيارات الفروع</h3>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => { downloadTemplate('plans'); logAction('تحميل نموذج', 'نموذج استيراد خطط الزيارات'); }} className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-xl text-[10px] font-black"><Download size={14}/> نموذج استيراد</button>
+                <button onClick={() => planFileInputRef.current?.click()} className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-500 rounded-xl text-[10px] font-black"><FileSpreadsheet size={14}/> استيراد الخطط</button>
+                <button onClick={() => { setVisitPlans([]); logAction('مسح جميع الخطط', 'تم مسح كافة خطط الزيارات'); }} className="flex items-center gap-2 px-4 py-2 bg-red-600/10 text-red-400 border border-red-900/30 rounded-xl text-[10px] font-black"><Trash2 size={14}/> مسح الكل</button>
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-right min-w-[800px]">
+                <thead>
+                  <tr className="border-b border-slate-700 text-[10px] font-black text-slate-500 uppercase tracking-widest text-center">
+                    <th className="py-4 px-2 text-right">الموظف</th>
+                    <th className="py-4 px-2">الرقم التسلسلي</th>
+                    <th className="py-4 px-2">الفرع المستهدف</th>
+                    <th className="py-4 px-2">التاريخ</th>
+                    <th className="py-4 px-2">إجراءات</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visitPlans.sort((a,b) => b.date.localeCompare(a.date)).map(plan => {
+                    const user = allUsers.find(u => u.id === plan.userId);
+                    const branch = branches.find(b => b.id === plan.branchId);
+                    return (
+                      <tr key={plan.id} className="border-b border-slate-700/50 hover:bg-slate-900/30 transition-all text-center">
+                        <td className="py-4 px-2 text-right">
+                          <div className="flex flex-col">
+                            <span className="font-bold text-sm text-white">{user?.fullName || plan.userName || 'موظف محذوف'}</span>
+                            <span className="text-blue-400 text-[10px] font-black uppercase">{user?.jobTitle}</span>
+                          </div>
+                        </td>
+                        <td className="py-4 px-2">
+                          <span className="text-xs text-slate-400 font-mono">{user?.serialNumber || 'N/A'}</span>
+                        </td>
+                        <td className="py-4 px-2">
+                          <span className="text-xs text-emerald-400 font-bold">{branch?.name || plan.branchName || 'فرع محذوف'}</span>
+                        </td>
+                        <td className="py-4 px-2 text-slate-400 text-xs font-mono">
+                          {plan.date}
+                        </td>
+                        <td className="py-4 px-2">
+                          <button onClick={() => { if(confirm('حذف هذه الخطة؟')) { setVisitPlans(visitPlans.filter(p => p.id !== plan.id)); logAction('حذف خطة زيارة', `الموظف: ${user?.fullName || plan.userName}, الفرع: ${branch?.name || plan.branchName}`); } }} className="text-slate-500 hover:text-red-400 p-1.5"><Trash2 size={16}/></button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           </div>
         )}
