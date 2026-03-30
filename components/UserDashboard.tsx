@@ -361,8 +361,43 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
   const myRecords = records.filter(r => r.userId === user.id).slice(-5).reverse();
 
   // Find today's plan for this user
-  const todayStr = new Date().toLocaleDateString('en-CA'); // Returns YYYY-MM-DD in local time
-  const todayPlan = visitPlans.find(p => p.userId === user.id && p.date === todayStr);
+  const getTodayStr = () => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+  
+  const todayStr = getTodayStr();
+  const todayPlan = visitPlans.find(p => {
+    if (!p.userId || !user.id) return false;
+    if (p.userId !== user.id) return false;
+    
+    const planDate = (p.date || "").toString().trim();
+    if (!planDate) return false;
+
+    // Direct match
+    if (planDate === todayStr) return true;
+
+    // Flexible match (contains today's components)
+    const d = new Date();
+    const y = d.getFullYear().toString();
+    const m = (d.getMonth() + 1).toString().padStart(2, '0');
+    const day = d.getDate().toString().padStart(2, '0');
+    
+    // Check for common formats: YYYY-MM-DD, DD-MM-YYYY, YYYY/MM/DD, DD/MM/YYYY
+    const formats = [
+      `${y}-${m}-${day}`,
+      `${day}-${m}-${y}`,
+      `${y}/${m}/${day}`,
+      `${day}/${m}/${y}`,
+      `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`,
+      `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`
+    ];
+    
+    return formats.some(f => planDate.includes(f));
+  });
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -382,22 +417,32 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
              <div className="text-slate-500 font-bold text-xs uppercase tracking-widest">{currentTime.toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long' })}</div>
              
              {todayPlan && (
-                <div className="mt-6 p-4 bg-blue-600/20 border border-blue-500/30 rounded-2xl flex items-center justify-between gap-4 max-w-sm mx-auto animate-pulse">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-blue-600 rounded-xl">
-                      <Navigation size={18} className="text-white" />
+                <div 
+                  onClick={() => {
+                    setSelectedBranchId(todayPlan.branchId);
+                    logAction('اختيار فرع الخطة', `تم اختيار فرع ${todayPlan.branchName} من خطة اليوم عبر الرسالة التنبيهية`);
+                  }}
+                  className="mt-6 p-5 bg-blue-600/20 border border-blue-500/40 rounded-3xl flex items-center justify-between gap-4 max-w-md mx-auto animate-pulse cursor-pointer hover:bg-blue-600/30 transition-all group shadow-lg shadow-blue-900/20"
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="p-3 bg-blue-600 rounded-2xl shadow-lg group-hover:scale-110 transition-transform">
+                      <Navigation size={22} className="text-white" />
                     </div>
                     <div className="text-right">
-                      <div className="text-[10px] font-black text-blue-400 uppercase tracking-widest">خطة اليوم</div>
-                      <div className="text-sm font-black text-white">{todayPlan.branchName}</div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="relative flex h-2 w-2">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+                        </span>
+                        <div className="text-[10px] font-black text-blue-400 uppercase tracking-widest">رسالة النظام: خطة اليوم</div>
+                      </div>
+                      <div className="text-sm font-black text-white">يجب زيارة: {todayPlan.branchName}</div>
+                      <div className="text-[8px] text-blue-300 font-bold mt-1">اضغط هنا للاختيار التلقائي للفرع</div>
                     </div>
                   </div>
-                  <button 
-                    onClick={() => setSelectedBranchId(todayPlan.branchId)}
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-[10px] font-black transition-all"
-                  >
-                    اختيار الفرع
-                  </button>
+                  <div className="px-4 py-2 bg-blue-600 group-hover:bg-blue-500 text-white rounded-xl text-[10px] font-black transition-all shadow-md">
+                    تحديد
+                  </div>
                 </div>
               )}
              <div className="mt-4 flex justify-center gap-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">
