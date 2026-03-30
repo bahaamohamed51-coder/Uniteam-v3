@@ -122,6 +122,7 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [records, setRecords] = useState<any[]>([]);
   const [authorizedUsers, setAuthorizedUsers] = useState<any[]>([]); // New state for users
+  const [visitPlans, setVisitPlans] = useState<any[]>([]); // New state for visit plans
   const [fetchedJobs, setFetchedJobs] = useState<any[]>([]);
   const [fetchedHolidays, setFetchedHolidays] = useState<string[]>([]);
   const [error, setError] = useState('');
@@ -150,9 +151,11 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
            // Backward compatibility
            setRecords(data); 
            setAuthorizedUsers([]);
+           setVisitPlans([]);
         } else {
            setRecords(data.records || []);
            setAuthorizedUsers(data.users || []);
+           setVisitPlans(data.visitPlans || []);
            setFetchedJobs(data.jobs || []);
            setFetchedHolidays(data.holidays || []);
         }
@@ -515,8 +518,11 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
         const isWorkingDay = workingDays.includes(dayOfWeek);
         const isOffDay = isHoliday || !isWorkingDay;
 
-        // Show if it's a working day OR if there are records
-        if (isWorkingDay || dayData) {
+        // Find visit plan for this user and date
+        const plan = visitPlans.find(p => (p.userId === userId || p.userName === u.fullName) && p.date === dateKey);
+
+        // Show if it's a working day OR if there are records OR if there is a visit plan
+        if (isWorkingDay || dayData || plan) {
           const firstIn = dayData?.firstIn;
           const lastOut = dayData?.lastOut;
           
@@ -554,6 +560,7 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
             'الرقم التسلسلي': u.serialNumber || 'N/A',
             'اسم الموظف': u.fullName,
             'اليوم': dateKey,
+            'الخطة': plan ? plan.branchName : 'لا توجد خطة',
             'وقت الحضور': firstIn ? new Date(firstIn.time).toLocaleTimeString('en-US') : 'لم يسجل',
             'فرع الحضور': firstIn ? firstIn.branch : '',
             'حالة الحضور': inStatus,
