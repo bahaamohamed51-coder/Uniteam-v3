@@ -198,15 +198,49 @@ export default function Login({
     }
   };
 
-  const handleAdminSubmit = (e: React.FormEvent) => {
+  const handleAdminSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (adminUsername === adminConfig.adminUsername && adminPassword === adminConfig.adminPassword) {
-      logAction('تسجيل دخول مسؤول', `المسؤول: ${adminUsername}`);
+    setIsLoading(true);
+    setError('');
+
+    const user = adminUsername.trim();
+    const pass = adminPassword.trim();
+    
+    // 1. Local Check (Hardcoded or Configured)
+    const defaultUser = 'admin';
+    const defaultPass = 'B522129';
+
+    const isLocalValid = (user === adminConfig.adminUsername && pass === adminConfig.adminPassword) || 
+                         (user === defaultUser && pass === defaultPass);
+
+    if (isLocalValid) {
+      logAction('تسجيل دخول مسؤول (محلي)', `المسؤول: ${user}`);
       onLogin({ id: 'admin-id', fullName: 'المسؤول', nationalId: '000', role: 'admin' });
-    } else {
-      logAction('فشل تسجيل دخول مسؤول', `المحاولة باسم: ${adminUsername}`);
-      setError('بيانات المسؤول غير صحيحة');
+      setIsLoading(false);
+      return;
     }
+
+    // 2. Cloud Check (if syncUrl is available) - To match ReportsView behavior
+    if (adminConfig.syncUrl) {
+      try {
+        const response = await fetch(`${adminConfig.syncUrl}?action=getReportData&user=${encodeURIComponent(user)}&pass=${encodeURIComponent(pass)}`);
+        const data = await response.json();
+        
+        if (!data.error) {
+          // If cloud accepts, allow access to management
+          logAction('تسجيل دخول مسؤول (سحابي)', `المسؤول: ${user}`);
+          onLogin({ id: 'admin-id', fullName: `المسؤول (${user})`, nationalId: '000', role: 'admin' });
+          setIsLoading(false);
+          return;
+        }
+      } catch (err) {
+        console.error("Cloud admin check failed", err);
+      }
+    }
+
+    logAction('فشل تسجيل دخول مسؤول', `المحاولة باسم: ${user}`);
+    setError('بيانات المسؤول غير صحيحة. تأكد من حالة الأحرف (B كبيرة) أو استخدم بيانات تقارير المسؤول');
+    setIsLoading(false);
   };
 
   const inputClasses = "w-full px-4 py-3.5 rounded-2xl border border-slate-600 bg-slate-900 text-white placeholder:text-slate-500 font-bold outline-none focus:border-blue-500 transition-all shadow-inner";
