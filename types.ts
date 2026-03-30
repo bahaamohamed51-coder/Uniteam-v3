@@ -11,6 +11,16 @@ export interface Job {
   id: string;
   title: string;
   workingDays?: number[];
+  canVisitMultipleBranches?: boolean; // New: Allow this job to have visit plans
+}
+
+export interface VisitPlan {
+  id: string;
+  userId: string;
+  userName: string;
+  branchId: string;
+  branchName: string;
+  date: string; // ISO date string (YYYY-MM-DD)
 }
 
 export interface User {
