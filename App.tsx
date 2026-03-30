@@ -104,48 +104,59 @@ const App: React.FC = () => {
         setJobs(data.jobs);
         localStorage.setItem('attendance_jobs', JSON.stringify(data.jobs));
       }
-      if (data.reportAccounts) setReportAccounts(data.reportAccounts);
+      if (data.reportAccounts) {
+        setReportAccounts(data.reportAccounts);
+        localStorage.setItem('attendance_report_accounts', JSON.stringify(data.reportAccounts));
+      }
       if (data.users && Array.isArray(data.users)) {
         setAllUsers(data.users);
         localStorage.setItem('attendance_users', JSON.stringify(data.users));
         
-        // Update current user if already logged in
-        if (currentUser && currentUser.role !== 'admin') {
-          const updatedUser = data.users.find((u: User) => u.id === currentUser.id);
-          if (updatedUser) {
-            setCurrentUser(updatedUser);
-            localStorage.setItem('attendance_current_user', JSON.stringify(updatedUser));
+        // Update current user if already logged in (using functional update to avoid stale closure)
+        setCurrentUser(prev => {
+          if (prev && prev.role !== 'admin') {
+            const updatedUser = data.users.find((u: User) => u.id === prev.id);
+            if (updatedUser) {
+              localStorage.setItem('attendance_current_user', JSON.stringify(updatedUser));
+              return updatedUser;
+            }
           }
-        }
+          return prev;
+        });
       }
       if (data.visitPlans) {
         setVisitPlans(data.visitPlans);
         localStorage.setItem('attendance_visit_plans', JSON.stringify(data.visitPlans));
       }
       
-      const updatedConfig = { ...config, lastUpdated: new Date().toISOString(), syncUrl: url, googleSheetLink: url };
-      if (data.holidays) updatedConfig.holidays = data.holidays;
-      setConfig(updatedConfig);
-      localStorage.setItem('attendance_config', JSON.stringify(updatedConfig));
+      setConfig(prev => {
+        const updatedConfig = { ...prev, lastUpdated: new Date().toISOString(), syncUrl: url, googleSheetLink: url };
+        if (data.holidays) updatedConfig.holidays = data.holidays;
+        localStorage.setItem('attendance_config', JSON.stringify(updatedConfig));
+        return updatedConfig;
+      });
     } catch (err) {
       setSyncError(true);
     } finally {
       setIsSyncing(false);
     }
-  }, [config]);
+  }, []); // No dependencies to avoid infinite loops
 
-  // Initial Data Load & Auto-Sync Logic
+  // Initial Data Load
   useEffect(() => {
     const savedUser = localStorage.getItem('attendance_current_user');
     const savedBranches = localStorage.getItem('attendance_branches');
     const savedJobs = localStorage.getItem('attendance_jobs');
     const savedPlans = localStorage.getItem('attendance_visit_plans');
     const savedUsers = localStorage.getItem('attendance_users');
+    const savedReportAccounts = localStorage.getItem('attendance_report_accounts');
+    
     if (savedUser) setCurrentUser(JSON.parse(savedUser));
     if (savedBranches) setBranches(JSON.parse(savedBranches));
     if (savedJobs) setJobs(JSON.parse(savedJobs));
     if (savedPlans) setVisitPlans(JSON.parse(savedPlans));
     if (savedUsers) setAllUsers(JSON.parse(savedUsers));
+    if (savedReportAccounts) setReportAccounts(JSON.parse(savedReportAccounts));
     
     // Check URL params for cloud link
     const params = new URLSearchParams(window.location.search);
@@ -267,8 +278,9 @@ const App: React.FC = () => {
     if (currentUser) {
       logAction('تسجيل خروج', `المستخدم: ${currentUser.fullName} (${currentUser.role})`);
     }
-    setCurrentUser(null);
     localStorage.removeItem('attendance_current_user');
+    setCurrentUser(null);
+    setActiveView('main');
   };
 
   const handleUpdateConfig = (newCfg: Partial<AppConfig>) => {
