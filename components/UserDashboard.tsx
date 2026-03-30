@@ -374,10 +374,21 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
     if (!p.userId || !user.id) return false;
     if (p.userId !== user.id) return false;
     
-    const planDate = (p.date || "").toString().trim();
+    let planDate = (p.date || "").toString().trim();
     if (!planDate) return false;
 
-    // Direct match
+    // If planDate is in long format, normalize it
+    if (planDate.includes('GMT') || planDate.length > 15) {
+      const d = new Date(planDate);
+      if (!isNaN(d.getTime())) {
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        planDate = `${year}-${month}-${day}`;
+      }
+    }
+
+    // Direct match after normalization
     if (planDate === todayStr) return true;
 
     // Flexible match (contains today's components)
