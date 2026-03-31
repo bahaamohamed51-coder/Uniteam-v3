@@ -430,30 +430,33 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
              {todayPlan && (
                 <div 
                   onClick={() => {
+                    if (todayPlan.branchName === 'Holiday') return;
                     setSelectedBranchId(todayPlan.branchId);
                     logAction('اختيار فرع الخطة', `تم اختيار فرع ${todayPlan.branchName} من خطة اليوم عبر الرسالة التنبيهية`);
                   }}
-                  className="mt-6 p-5 bg-blue-600/20 border border-blue-500/40 rounded-3xl flex items-center justify-between gap-4 max-w-md mx-auto animate-pulse cursor-pointer hover:bg-blue-600/30 transition-all group shadow-lg shadow-blue-900/20"
+                  className={`mt-6 p-5 border rounded-3xl flex items-center justify-between gap-4 max-w-md mx-auto animate-pulse transition-all group shadow-lg ${todayPlan.branchName === 'Holiday' ? 'bg-orange-600/20 border-orange-500/40 shadow-orange-900/20 cursor-default' : 'bg-blue-600/20 border-blue-500/40 shadow-blue-900/20 cursor-pointer hover:bg-blue-600/30'}`}
                 >
                   <div className="flex items-center gap-4">
-                    <div className="p-3 bg-blue-600 rounded-2xl shadow-lg group-hover:scale-110 transition-transform">
-                      <Navigation size={22} className="text-white" />
+                    <div className={`p-3 rounded-2xl shadow-lg transition-transform ${todayPlan.branchName === 'Holiday' ? 'bg-orange-600' : 'bg-blue-600 group-hover:scale-110'}`}>
+                      {todayPlan.branchName === 'Holiday' ? <FileText size={22} className="text-white" /> : <Navigation size={22} className="text-white" />}
                     </div>
                     <div className="text-right">
                       <div className="flex items-center gap-2 mb-1">
                         <span className="relative flex h-2 w-2">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                          <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+                          <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${todayPlan.branchName === 'Holiday' ? 'bg-orange-400' : 'bg-blue-400'}`}></span>
+                          <span className={`relative inline-flex rounded-full h-2 w-2 ${todayPlan.branchName === 'Holiday' ? 'bg-orange-500' : 'bg-blue-500'}`}></span>
                         </span>
-                        <div className="text-[10px] font-black text-blue-400 uppercase tracking-widest">رسالة النظام: خطة اليوم</div>
+                        <div className={`text-[10px] font-black uppercase tracking-widest ${todayPlan.branchName === 'Holiday' ? 'text-orange-400' : 'text-blue-400'}`}>رسالة النظام: {todayPlan.branchName === 'Holiday' ? 'إجازة رسمية' : 'خطة اليوم'}</div>
                       </div>
-                      <div className="text-sm font-black text-white">يجب زيارة: {todayPlan.branchName}</div>
-                      <div className="text-[8px] text-blue-300 font-bold mt-1">اضغط هنا للاختيار التلقائي للفرع</div>
+                      <div className="text-sm font-black text-white">{todayPlan.branchName === 'Holiday' ? 'اليوم إجازة (Holiday)' : `يجب زيارة: ${todayPlan.branchName}`}</div>
+                      <div className={`text-[8px] font-bold mt-1 ${todayPlan.branchName === 'Holiday' ? 'text-orange-300' : 'text-blue-300'}`}>{todayPlan.branchName === 'Holiday' ? 'نتمنى لك قضاء وقت ممتع' : 'اضغط هنا للاختيار التلقائي للفرع'}</div>
                     </div>
                   </div>
-                  <div className="px-4 py-2 bg-blue-600 group-hover:bg-blue-500 text-white rounded-xl text-[10px] font-black transition-all shadow-md">
-                    تحديد
-                  </div>
+                  {todayPlan.branchName !== 'Holiday' && (
+                    <div className="px-4 py-2 bg-blue-600 group-hover:bg-blue-500 text-white rounded-xl text-[10px] font-black transition-all shadow-md">
+                      تحديد
+                    </div>
+                  )}
                 </div>
               )}
              <div className="mt-4 flex justify-center gap-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">
