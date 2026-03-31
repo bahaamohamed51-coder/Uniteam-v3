@@ -482,8 +482,12 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
                     <div 
                       onClick={() => {
                         if (!todayPlan || todayPlan.branchName === 'Holiday') return;
-                        setSelectedBranchId(todayPlan.branchId);
-                        logAction('اختيار فرع الخطة', `تم اختيار فرع ${todayPlan.branchName} من خطة اليوم عبر الرسالة التنبيهية`);
+                        // Robust branch finding: check by ID first, then by name
+                        const targetBranch = branches.find(b => b.id === todayPlan.branchId || b.name === todayPlan.branchName);
+                        if (targetBranch) {
+                          setSelectedBranchId(targetBranch.id);
+                          logAction('اختيار فرع الخطة', `تم اختيار فرع ${targetBranch.name} من خطة اليوم عبر الرسالة التنبيهية`);
+                        }
                       }}
                       className={`p-5 flex items-center justify-between gap-4 transition-all group ${!todayPlan ? 'opacity-40 cursor-default' : todayPlan.branchName === 'Holiday' ? 'bg-orange-600/5 cursor-default' : 'bg-blue-600/5 cursor-pointer hover:bg-blue-600/10'}`}
                     >
@@ -499,7 +503,9 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
                             </span>
                             <div className={`text-[9px] font-black uppercase tracking-widest ${!todayPlan ? 'text-slate-500' : todayPlan.branchName === 'Holiday' ? 'text-orange-400' : 'text-blue-400'}`}>الفرع المطلوب زيارته اليوم</div>
                           </div>
-                          <div className="text-xs font-black text-white leading-tight">{!todayPlan ? 'لا توجد خطة مسجلة' : todayPlan.branchName === 'Holiday' ? 'إجازة (Holiday)' : todayPlan.branchName}</div>
+                          <div className="text-xs font-black text-white leading-tight">
+                            {!todayPlan ? 'لا توجد خطة مسجلة' : todayPlan.branchName === 'Holiday' ? 'إجازة (Holiday) - نتمنى لك وقتاً ممتعاً' : todayPlan.branchName}
+                          </div>
                         </div>
                       </div>
                       {todayPlan && todayPlan.branchName !== 'Holiday' && (
