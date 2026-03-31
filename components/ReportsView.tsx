@@ -154,10 +154,15 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
            setVisitPlans([]);
         } else {
            setRecords(data.records || []);
-           setAuthorizedUsers(data.users || []);
-           setVisitPlans(data.visitPlans || []);
-           setFetchedJobs(data.jobs || []);
-           setFetchedHolidays(data.holidays || []);
+           const users = (data.users && data.users.length > 0) ? data.users : JSON.parse(localStorage.getItem('attendance_users') || '[]');
+           setAuthorizedUsers(users);
+           const plans = (data.visitPlans && data.visitPlans.length > 0) ? data.visitPlans : JSON.parse(localStorage.getItem('attendance_visit_plans') || '[]');
+           setVisitPlans(plans);
+           const jobs = (data.jobs && data.jobs.length > 0) ? data.jobs : JSON.parse(localStorage.getItem('attendance_jobs') || '[]');
+           setFetchedJobs(jobs);
+           const config = JSON.parse(localStorage.getItem('attendance_config') || '{}');
+           const holidays = (data.holidays && data.holidays.length > 0) ? data.holidays : (config.holidays || []);
+           setFetchedHolidays(holidays);
         }
         setIsLoggedIn(true); 
         logAction?.('تسجيل دخول متابع تقارير', `المستخدم: ${username}`);
@@ -519,7 +524,48 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
         const isOffDay = isHoliday || !isWorkingDay;
 
         // Find visit plan for this user and date
-        const plan = visitPlans.find(p => (p.userId === userId || p.userName === u.fullName) && p.date === dateKey);
+        const plan = visitPlans.find(p => {
+          if (!p.date) return false;
+          
+          // 1. Strict Date Matching (Normalize both to YYYY-MM-DD)
+          const pDateStr = p.date.toString().trim();
+          let normalizedPDate = pDateStr;
+          if (pDateStr.includes('T')) {
+            normalizedPDate = pDateStr.split('T')[0];
+          } else if (pDateStr.includes(' ')) {
+            normalizedPDate = pDateStr.split(' ')[0];
+          }
+          
+          // If it's not in YYYY-MM-DD format, try to convert it
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(normalizedPDate)) {
+            const d = new Date(pDateStr);
+            if (!isNaN(d.getTime())) {
+              normalizedPDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+            }
+          }
+
+          if (normalizedPDate !== dateKey) return false;
+
+          // 2. User Matching
+          const pUser = p.userId?.toString().trim();
+          const pName = p.userName?.toString().trim().toLowerCase().replace(/\s+/g, '');
+          const pSerial = p.userSerial?.toString().trim();
+          const uId = u.id?.toString().trim();
+          const uName = u.fullName?.toString().trim().toLowerCase().replace(/\s+/g, '');
+          const uSerial = u.serialNumber?.toString().trim();
+
+          const isValid = (val: any) => val && val !== 'N/A' && val !== 'undefined' && val !== '';
+
+          return (
+            (isValid(uId) && isValid(pUser) && pUser === uId) || 
+            (isValid(uName) && isValid(pName) && pName === uName) || 
+            (isValid(uSerial) && isValid(pSerial) && pSerial === uSerial) ||
+            (isValid(uSerial) && isValid(pUser) && pUser === uSerial) ||
+            (isValid(uName) && isValid(pUser) && pUser.toLowerCase().replace(/\s+/g, '') === uName) ||
+            (isValid(uSerial) && isValid(pUser) && pUser.includes(uSerial)) ||
+            (isValid(uName) && isValid(pName) && (pName.includes(uName) || uName.includes(pName)))
+          );
+        });
 
         // Show if it's a working day OR if there are records OR if there is a visit plan
         if (isWorkingDay || dayData || plan) {
@@ -560,7 +606,7 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
             'الرقم التسلسلي': u.serialNumber || 'N/A',
             'اسم الموظف': u.fullName,
             'اليوم': dateKey,
-            'الخطة': plan ? plan.branchName : 'لا توجد خطة',
+            'الخطة': plan ? (plan.branchName || plan.branch || 'خطة موجودة') : 'لا توجد خطة',
             'وقت الحضور': firstIn ? new Date(firstIn.time).toLocaleTimeString('en-US') : 'لم يسجل',
             'فرع الحضور': firstIn ? firstIn.branch : '',
             'حالة الحضور': inStatus,
