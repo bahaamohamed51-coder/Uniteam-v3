@@ -317,8 +317,52 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
         
         const isWorkingDay = workingDays.includes(dayOfWeek);
         const isHoliday = fetchedHolidays.includes(dateStr);
+        
+        // Check if there's a "Holiday" visit plan for this user and date
+        const userPlan = visitPlans.find(p => {
+          if (!p.date) return false;
+          
+          // 1. Strict Date Matching (Normalize both to YYYY-MM-DD)
+          const pDateStr = p.date.toString().trim();
+          let normalizedPDate = pDateStr;
+          if (pDateStr.includes('T')) {
+            normalizedPDate = pDateStr.split('T')[0];
+          } else if (pDateStr.includes(' ')) {
+            normalizedPDate = pDateStr.split(' ')[0];
+          }
+          
+          // If it's not in YYYY-MM-DD format, try to convert it
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(normalizedPDate)) {
+            const d = new Date(pDateStr);
+            if (!isNaN(d.getTime())) {
+              normalizedPDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+            }
+          }
 
-        if (isWorkingDay && !isHoliday) {
+          if (normalizedPDate !== dateStr) return false;
+
+          // 2. User Matching
+          const pUser = p.userId?.toString().trim();
+          const pName = p.userName?.toString().trim().toLowerCase().replace(/\s+/g, '');
+          const pSerial = p.userSerial?.toString().trim();
+          const uId = u.id?.toString().trim();
+          const uName = u.fullName?.toString().trim().toLowerCase().replace(/\s+/g, '');
+          const uSerial = u.serialNumber?.toString().trim();
+
+          const isValid = (val: any) => val && val !== 'N/A' && val !== 'undefined' && val !== '';
+
+          const matchesUser = (isValid(uId) && isValid(pUser) && pUser === uId) || 
+                             (isValid(uName) && isValid(pName) && pName === uName) || 
+                             (isValid(uSerial) && isValid(pSerial) && pSerial === uSerial) ||
+                             (isValid(uSerial) && isValid(pUser) && pUser === uSerial) ||
+                             (isValid(uName) && isValid(pUser) && pUser.toLowerCase().replace(/\s+/g, '') === uName) ||
+                             (isValid(uSerial) && isValid(pUser) && pUser.includes(uSerial)) ||
+                             (isValid(uName) && isValid(pName) && (pName.includes(uName) || uName.includes(pName)));
+
+          return matchesUser && p.branchName === 'Holiday';
+        });
+
+        if (isWorkingDay && !isHoliday && !userPlan) {
           userWorkingDaysCount++;
           userWorkingDaysSet.add(dateStr);
         }
@@ -521,7 +565,6 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
         const dayOfWeek = currentDay.getDay();
         const isHoliday = fetchedHolidays.includes(dateKey);
         const isWorkingDay = workingDays.includes(dayOfWeek);
-        const isOffDay = isHoliday || !isWorkingDay;
 
         // Find visit plan for this user and date
         const plan = visitPlans.find(p => {
@@ -566,6 +609,9 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
             (isValid(uName) && isValid(pName) && (pName.includes(uName) || uName.includes(pName)))
           );
         });
+
+        const isPlanHoliday = plan?.branchName === 'Holiday';
+        const isOffDay = isHoliday || !isWorkingDay || isPlanHoliday;
 
         // Show if it's a working day OR if there are records OR if there is a visit plan
         if (isWorkingDay || dayData || plan) {
