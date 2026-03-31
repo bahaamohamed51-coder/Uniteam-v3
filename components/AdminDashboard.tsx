@@ -41,11 +41,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [selectedJobsForAcc, setSelectedJobsForAcc] = useState<string[]>([]);
   const [selectedUsersForAcc, setSelectedUsersForAcc] = useState<string[]>([]); // New state for selected employees
   
+  const [newPlanUserId, setNewPlanUserId] = useState('');
+  const [newPlanBranchId, setNewPlanBranchId] = useState('');
+  const [newPlanDate, setNewPlanDate] = useState('');
+
   const [showPass, setShowPass] = useState<string | null>(null);
   const [editingReportId, setEditingReportId] = useState<string | null>(null);
   const [editReportData, setEditReportData] = useState<Partial<ReportAccount>>({});
   const [editingBranchId, setEditingBranchId] = useState<string | null>(null);
   const [editBranchData, setEditBranchData] = useState<Partial<Branch>>({});
+  const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
+  const [editPlanData, setEditPlanData] = useState<Partial<VisitPlan>>({});
   const [syncUrl, setSyncUrl] = useState(config.syncUrl || '');
   
   // State for Branch Bulk Delete
@@ -96,13 +102,27 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         action: 'updateSystem',
         adminUsername: config.adminUsername,
         adminPassword: config.adminPassword,
-        branches: branches,
-        jobs: jobs,
-        users: allUsers,
-        reportAccounts: reportAccounts,
-        visitPlans: visitPlans,
-        holidays: config.holidays || []
       };
+
+      // تحديث انتقائي بناءً على نوع البيانات
+      // Selective update based on dataType
+      if (!dataType || dataType === 'branches' || dataType === 'jobs' || dataType === 'holidays') {
+        payload.branches = branches;
+        payload.jobs = jobs;
+        payload.holidays = config.holidays || [];
+      }
+      
+      if (!dataType || dataType === 'users') {
+        payload.users = allUsers;
+      }
+      
+      if (!dataType || dataType === 'reportAccounts') {
+        payload.reportAccounts = reportAccounts;
+      }
+      
+      if (!dataType || dataType === 'visitPlans') {
+        payload.visitPlans = visitPlans;
+      }
 
       await fetch(config.syncUrl, {
         method: 'POST',
@@ -261,6 +281,46 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       } catch (err) { alert("خطأ في قراءة ملف الإكسل. تأكد من صحة البيانات."); }
       if(e.target) e.target.value = '';
     }; reader.readAsBinaryString(file);
+  };
+
+  const addManualPlan = () => {
+    if (!newPlanUserId || !newPlanBranchId || !newPlanDate) return alert("يرجى اختيار الموظف والفرع والتاريخ");
+    const user = allUsers.find(u => u.id === newPlanUserId);
+    const branch = branches.find(b => b.id === newPlanBranchId);
+    
+    const newPlan: VisitPlan = {
+      id: Math.random().toString(36).substr(2, 9),
+      userId: newPlanUserId,
+      userName: user?.fullName || 'N/A',
+      userSerial: user?.serialNumber || 'N/A',
+      branchId: newPlanBranchId,
+      branchName: newPlanBranchId === 'holiday' ? 'Holiday' : (branch?.name || 'N/A'),
+      date: newPlanDate
+    };
+
+    setVisitPlans(prev => [newPlan, ...prev]);
+    logAction('إضافة زيارة يدوية', `الموظف: ${newPlan.userName}, الفرع: ${newPlan.branchName}, التاريخ: ${newPlanDate}`);
+    setNewPlanUserId('');
+    setNewPlanBranchId('');
+    setNewPlanDate('');
+    alert("تم إضافة الزيارة بنجاح. يرجى النقر على 'حفظ في السحابة' لتأكيد التغييرات.");
+  };
+
+  const saveEditPlan = (id: string) => {
+    const user = allUsers.find(u => u.id === editPlanData.userId);
+    const branch = branches.find(b => b.id === editPlanData.branchId);
+    
+    setVisitPlans(visitPlans.map(p => p.id === id ? {
+      ...p,
+      ...editPlanData,
+      userName: user?.fullName || p.userName,
+      userSerial: user?.serialNumber || p.userSerial,
+      branchName: editPlanData.branchId === 'holiday' ? 'Holiday' : (branch?.name || p.branchName)
+    } : p));
+    
+    setEditingPlanId(null);
+    setEditPlanData({});
+    logAction('تعديل خطة زيارة', `المعرف: ${id}`);
   };
 
   const saveEditBranch = (id: string) => { 
@@ -641,6 +701,24 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </button>
               </div>
             </div>
+            <div className="bg-slate-900/50 p-6 rounded-3xl border border-slate-700 space-y-4">
+               <h4 className="text-xs font-black text-blue-400 uppercase tracking-widest flex items-center gap-2">إضافة زيارة يدوية</h4>
+               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <select className={inputClasses} value={newPlanUserId} onChange={e => setNewPlanUserId(e.target.value)}>
+                    <option value="">اختر الموظف</option>
+                    {allUsers.filter(u => u.role !== 'admin').map(u => <option key={u.id} value={u.id}>{u.fullName} ({u.serialNumber})</option>)}
+                  </select>
+                  <select className={inputClasses} value={newPlanBranchId} onChange={e => setNewPlanBranchId(e.target.value)}>
+                    <option value="">اختر الفرع</option>
+                    <option value="holiday">إجازة (Holiday)</option>
+                    {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                  </select>
+                  <input type="date" className={inputClasses} value={newPlanDate} onChange={e => setNewPlanDate(e.target.value)} />
+                  <button onClick={addManualPlan} className="bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-black py-3 flex items-center justify-center gap-2 transition-all">
+                    <Plus size={18}/> إضافة زيارة
+                  </button>
+               </div>
+            </div>
             <div className="overflow-x-auto">
               <table className="w-full text-right min-w-[800px]">
                 <thead>
@@ -656,25 +734,69 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   {visitPlans.sort((a,b) => b.date.localeCompare(a.date)).map(plan => {
                     const user = allUsers.find(u => u.id === plan.userId);
                     const branch = branches.find(b => b.id === plan.branchId);
+                    const isEditing = editingPlanId === plan.id;
+
                     return (
                       <tr key={plan.id} className="border-b border-slate-700/50 hover:bg-slate-900/30 transition-all text-center">
                         <td className="py-4 px-2 text-right">
-                          <div className="flex flex-col">
-                            <span className="font-bold text-sm text-white">{user?.fullName || plan.userName || 'موظف محذوف'}</span>
-                            <span className="text-blue-400 text-[10px] font-black uppercase">{user?.jobTitle}</span>
-                          </div>
+                          {isEditing ? (
+                            <select 
+                              className={inputClasses} 
+                              value={editPlanData.userId || plan.userId} 
+                              onChange={e => setEditPlanData({ ...editPlanData, userId: e.target.value })}
+                            >
+                              {allUsers.filter(u => u.role !== 'admin').map(u => <option key={u.id} value={u.id}>{u.fullName}</option>)}
+                            </select>
+                          ) : (
+                            <div className="flex flex-col">
+                              <span className="font-bold text-sm text-white">{user?.fullName || plan.userName || 'موظف محذوف'}</span>
+                              <span className="text-blue-400 text-[10px] font-black uppercase">{user?.jobTitle}</span>
+                            </div>
+                          )}
                         </td>
                         <td className="py-4 px-2">
                           <span className="text-xs text-slate-400 font-mono">{user?.serialNumber || plan.userSerial || 'N/A'}</span>
                         </td>
                         <td className="py-4 px-2">
-                          <span className="text-xs text-emerald-400 font-bold">{branch?.name || plan.branchName || 'فرع محذوف'}</span>
+                          {isEditing ? (
+                            <select 
+                              className={inputClasses} 
+                              value={editPlanData.branchId || plan.branchId} 
+                              onChange={e => setEditPlanData({ ...editPlanData, branchId: e.target.value })}
+                            >
+                              <option value="holiday">إجازة (Holiday)</option>
+                              {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                            </select>
+                          ) : (
+                            <span className={`text-xs font-bold ${plan.branchName === 'Holiday' ? 'text-orange-400' : 'text-emerald-400'}`}>
+                              {branch?.name || plan.branchName || 'فرع محذوف'}
+                            </span>
+                          )}
                         </td>
                         <td className="py-4 px-2 text-slate-400 text-xs font-mono">
-                          {plan.date}
+                          {isEditing ? (
+                            <input 
+                              type="date" 
+                              className={inputClasses} 
+                              value={editPlanData.date || plan.date} 
+                              onChange={e => setEditPlanData({ ...editPlanData, date: e.target.value })}
+                            />
+                          ) : plan.date}
                         </td>
                         <td className="py-4 px-2">
-                          <button onClick={() => { if(confirm('حذف هذه الخطة؟')) { setVisitPlans(visitPlans.filter(p => p.id !== plan.id)); logAction('حذف خطة زيارة', `الموظف: ${user?.fullName || plan.userName}, الفرع: ${branch?.name || plan.branchName}`); } }} className="text-slate-500 hover:text-red-400 p-1.5"><Trash2 size={16}/></button>
+                          <div className="flex items-center justify-center gap-1">
+                            {isEditing ? (
+                              <>
+                                <button onClick={() => saveEditPlan(plan.id)} className="text-green-500 hover:text-green-400 p-1.5"><Check size={16}/></button>
+                                <button onClick={() => { setEditingPlanId(null); setEditPlanData({}); }} className="text-slate-500 hover:text-slate-400 p-1.5"><X size={16}/></button>
+                              </>
+                            ) : (
+                              <>
+                                <button onClick={() => { setEditingPlanId(plan.id); setEditPlanData(plan); }} className="text-blue-500 hover:text-blue-400 p-1.5"><Edit2 size={16}/></button>
+                                <button onClick={() => { if(confirm('حذف هذه الخطة؟')) { setVisitPlans(visitPlans.filter(p => p.id !== plan.id)); logAction('حذف خطة زيارة', `الموظف: ${user?.fullName || plan.userName}, الفرع: ${branch?.name || plan.branchName}`); } }} className="text-slate-500 hover:text-red-400 p-1.5"><Trash2 size={16}/></button>
+                              </>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     );
