@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { User, Branch, AttendanceRecord, VisitPlan } from '../types';
-import { MapPin, Clock, CheckCircle, AlertCircle, RotateCcw, Cloud, FileText, Navigation } from 'lucide-react';
+import { MapPin, Clock, CheckCircle, AlertCircle, RotateCcw, Cloud, FileText, Navigation, Calendar } from 'lucide-react';
 import { calculateDistance, getDeviceFingerprint } from '../utils';
 
 interface UserDashboardProps {
@@ -410,6 +410,54 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
     return formats.some(f => planDate.includes(f));
   });
 
+  // Find tomorrow's plan for this user
+  const getTomorrowStr = () => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+  
+  const tomorrowStr = getTomorrowStr();
+  const tomorrowPlan = visitPlans.find(p => {
+    if (!p.userId || !user.id) return false;
+    if (p.userId !== user.id) return false;
+    
+    let planDate = (p.date || "").toString().trim();
+    if (!planDate) return false;
+
+    if (planDate.includes('GMT') || planDate.length > 15) {
+      const d = new Date(planDate);
+      if (!isNaN(d.getTime())) {
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        planDate = `${year}-${month}-${day}`;
+      }
+    }
+
+    if (planDate === tomorrowStr) return true;
+
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    const y = d.getFullYear().toString();
+    const m = (d.getMonth() + 1).toString().padStart(2, '0');
+    const day = d.getDate().toString().padStart(2, '0');
+    
+    const formats = [
+      `${y}-${m}-${day}`,
+      `${day}-${m}-${y}`,
+      `${y}/${m}/${day}`,
+      `${day}/${m}/${y}`,
+      `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`,
+      `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`
+    ];
+    
+    return formats.some(f => planDate.includes(f));
+  });
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
       <div className="lg:col-span-2 space-y-6">
@@ -427,36 +475,53 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
              <div className="text-5xl font-black text-white mt-10 mb-2 tracking-tighter drop-shadow-2xl">{currentTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</div>
              <div className="text-slate-500 font-bold text-xs uppercase tracking-widest">{currentTime.toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long' })}</div>
              
-             {todayPlan && (
-                <div 
-                  onClick={() => {
-                    if (todayPlan.branchName === 'Holiday') return;
-                    setSelectedBranchId(todayPlan.branchId);
-                    logAction('اختيار فرع الخطة', `تم اختيار فرع ${todayPlan.branchName} من خطة اليوم عبر الرسالة التنبيهية`);
-                  }}
-                  className={`mt-6 p-5 border rounded-3xl flex items-center justify-between gap-4 max-w-md mx-auto animate-pulse transition-all group shadow-lg ${todayPlan.branchName === 'Holiday' ? 'bg-orange-600/20 border-orange-500/40 shadow-orange-900/20 cursor-default' : 'bg-blue-600/20 border-blue-500/40 shadow-blue-900/20 cursor-pointer hover:bg-blue-600/30'}`}
-                >
-                  <div className="flex items-center gap-4">
-                    <div className={`p-3 rounded-2xl shadow-lg transition-transform ${todayPlan.branchName === 'Holiday' ? 'bg-orange-600' : 'bg-blue-600 group-hover:scale-110'}`}>
-                      {todayPlan.branchName === 'Holiday' ? <FileText size={22} className="text-white" /> : <Navigation size={22} className="text-white" />}
-                    </div>
-                    <div className="text-right">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="relative flex h-2 w-2">
-                          <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${todayPlan.branchName === 'Holiday' ? 'bg-orange-400' : 'bg-blue-400'}`}></span>
-                          <span className={`relative inline-flex rounded-full h-2 w-2 ${todayPlan.branchName === 'Holiday' ? 'bg-orange-500' : 'bg-blue-500'}`}></span>
-                        </span>
-                        <div className={`text-[10px] font-black uppercase tracking-widest ${todayPlan.branchName === 'Holiday' ? 'text-orange-400' : 'text-blue-400'}`}>رسالة النظام: {todayPlan.branchName === 'Holiday' ? 'إجازة رسمية' : 'خطة اليوم'}</div>
+             {(todayPlan || tomorrowPlan) && (
+                <div className="mt-6 bg-slate-900/50 border border-slate-700/50 rounded-3xl overflow-hidden max-w-4xl mx-auto shadow-2xl">
+                  <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x md:divide-x-reverse divide-slate-700/30">
+                    {/* Today's Plan */}
+                    <div 
+                      onClick={() => {
+                        if (!todayPlan || todayPlan.branchName === 'Holiday') return;
+                        setSelectedBranchId(todayPlan.branchId);
+                        logAction('اختيار فرع الخطة', `تم اختيار فرع ${todayPlan.branchName} من خطة اليوم عبر الرسالة التنبيهية`);
+                      }}
+                      className={`p-5 flex items-center justify-between gap-4 transition-all group ${!todayPlan ? 'opacity-40 cursor-default' : todayPlan.branchName === 'Holiday' ? 'bg-orange-600/5 cursor-default' : 'bg-blue-600/5 cursor-pointer hover:bg-blue-600/10'}`}
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className={`p-3 rounded-2xl shadow-lg transition-transform ${!todayPlan ? 'bg-slate-800' : todayPlan.branchName === 'Holiday' ? 'bg-orange-600' : 'bg-blue-600 group-hover:scale-105'}`}>
+                          {!todayPlan ? <Clock size={20} className="text-slate-500" /> : todayPlan.branchName === 'Holiday' ? <FileText size={20} className="text-white" /> : <Navigation size={20} className="text-white" />}
+                        </div>
+                        <div className="text-right">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="relative flex h-2 w-2">
+                              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${!todayPlan ? 'bg-slate-500' : todayPlan.branchName === 'Holiday' ? 'bg-orange-400' : 'bg-blue-400'}`}></span>
+                              <span className={`relative inline-flex rounded-full h-2 w-2 ${!todayPlan ? 'bg-slate-600' : todayPlan.branchName === 'Holiday' ? 'bg-orange-500' : 'bg-blue-500'}`}></span>
+                            </span>
+                            <div className={`text-[9px] font-black uppercase tracking-widest ${!todayPlan ? 'text-slate-500' : todayPlan.branchName === 'Holiday' ? 'text-orange-400' : 'text-blue-400'}`}>الفرع المطلوب زيارته اليوم</div>
+                          </div>
+                          <div className="text-xs font-black text-white leading-tight">{!todayPlan ? 'لا توجد خطة مسجلة' : todayPlan.branchName === 'Holiday' ? 'إجازة (Holiday)' : todayPlan.branchName}</div>
+                        </div>
                       </div>
-                      <div className="text-sm font-black text-white">{todayPlan.branchName === 'Holiday' ? 'اليوم إجازة (Holiday)' : `يجب زيارة: ${todayPlan.branchName}`}</div>
-                      <div className={`text-[8px] font-bold mt-1 ${todayPlan.branchName === 'Holiday' ? 'text-orange-300' : 'text-blue-300'}`}>{todayPlan.branchName === 'Holiday' ? 'نتمنى لك قضاء وقت ممتع' : 'اضغط هنا للاختيار التلقائي للفرع'}</div>
+                      {todayPlan && todayPlan.branchName !== 'Holiday' && (
+                        <div className="px-3 py-1.5 bg-blue-600 group-hover:bg-blue-500 text-white rounded-lg text-[9px] font-black transition-all shadow-md whitespace-nowrap">تحديد الفرع</div>
+                      )}
+                    </div>
+
+                    {/* Tomorrow's Plan */}
+                    <div 
+                      className={`p-5 flex items-center gap-4 transition-all ${!tomorrowPlan ? 'opacity-40 cursor-default' : tomorrowPlan.branchName === 'Holiday' ? 'bg-orange-600/5 cursor-default' : 'bg-indigo-600/5 cursor-default'}`}
+                    >
+                      <div className={`p-3 rounded-2xl shadow-lg ${!tomorrowPlan ? 'bg-slate-800' : tomorrowPlan.branchName === 'Holiday' ? 'bg-orange-600' : 'bg-indigo-600'}`}>
+                        {!tomorrowPlan ? <Clock size={20} className="text-slate-500" /> : tomorrowPlan.branchName === 'Holiday' ? <FileText size={20} className="text-white" /> : <Calendar size={20} className="text-white" />}
+                      </div>
+                      <div className="text-right">
+                        <div className="flex items-center gap-2 mb-1">
+                          <div className={`text-[9px] font-black uppercase tracking-widest ${!tomorrowPlan ? 'text-slate-500' : tomorrowPlan.branchName === 'Holiday' ? 'text-orange-400' : 'text-indigo-400'}`}>الفرع المطلوب زيارته غداً</div>
+                        </div>
+                        <div className="text-xs font-black text-white leading-tight">{!tomorrowPlan ? 'لا توجد خطة مسجلة' : tomorrowPlan.branchName === 'Holiday' ? 'إجازة (Holiday)' : tomorrowPlan.branchName}</div>
+                      </div>
                     </div>
                   </div>
-                  {todayPlan.branchName !== 'Holiday' && (
-                    <div className="px-4 py-2 bg-blue-600 group-hover:bg-blue-500 text-white rounded-xl text-[10px] font-black transition-all shadow-md">
-                      تحديد
-                    </div>
-                  )}
                 </div>
               )}
              <div className="mt-4 flex justify-center gap-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">
