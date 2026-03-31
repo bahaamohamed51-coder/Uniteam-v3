@@ -190,12 +190,12 @@ const App: React.FC = () => {
        syncWithCloud(config.syncUrl);
      }
 
-     // 2. Poll every 60 seconds to keep data fresh if online
+     // 2. Poll every 2 seconds to keep data fresh if online (for non-admin users)
      const intervalId = setInterval(() => {
        if (navigator.onLine) {
          syncWithCloud(config.syncUrl);
        }
-     }, 60000); // 1 minute interval
+     }, 2000); // 2 seconds interval
 
      return () => clearInterval(intervalId);
   }, [isOnline, config.syncUrl, syncWithCloud, currentUser]);
