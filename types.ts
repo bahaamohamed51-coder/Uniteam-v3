@@ -18,6 +18,7 @@ export interface VisitPlan {
   id: string;
   userId: string;
   userName: string;
+  userSerial?: string; // New: Serial number for easier matching
   branchId: string;
   branchName: string;
   date: string; // ISO date string (YYYY-MM-DD)
