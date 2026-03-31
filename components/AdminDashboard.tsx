@@ -198,7 +198,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
           const newPlans = data.map((item: any) => {
             const serial = (item["الرقم التسلسلي للموظف"] || "").toString().trim();
             const user = allUsers.find(u => u.serialNumber === serial || u.id === serial);
-            const branch = branches.find(b => b.name === (item["اسم الفرع"] || ""));
+            const branchName = (item["اسم الفرع"] || "").toString().trim();
+            const isHoliday = branchName.toLowerCase() === 'holiday';
+            const branch = branches.find(b => b.name === branchName);
             
             let dateVal = (item["التاريخ"] || "").toString().trim();
             // Normalize date to YYYY-MM-DD
@@ -218,14 +220,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
               dateVal = `${year}-${month}-${day}`;
             }
 
-            if (user && branch) {
+            if (user && (branch || isHoliday)) {
               return {
                 id: Math.random().toString(36).substr(2, 9),
                 userId: user.id,
                 userName: user.fullName,
                 userSerial: user.serialNumber,
-                branchId: branch.id,
-                branchName: branch.name,
+                branchId: branch ? branch.id : 'holiday',
+                branchName: branch ? branch.name : 'Holiday',
                 date: dateVal
               };
             }
