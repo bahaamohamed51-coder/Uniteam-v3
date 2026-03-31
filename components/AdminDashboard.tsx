@@ -88,27 +88,32 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
     return match ? match[1] : timeStr;
   };
 
-  const pushToCloud = async () => {
+  const pushToCloud = async (dataType?: string) => {
     if (!config.syncUrl) return alert("يرجى ضبط رابط المزامنة أولاً");
     setIsPushing(true);
     try {
+      const payload: any = {
+        action: 'updateSystem',
+        adminUsername: config.adminUsername,
+        adminPassword: config.adminPassword
+      };
+
+      // If dataType is provided, we only send that specific data
+      // Otherwise we send everything (fallback)
+      if (!dataType || dataType === 'branches') payload.branches = branches;
+      if (!dataType || dataType === 'jobs') payload.jobs = jobs;
+      if (!dataType || dataType === 'users') payload.users = allUsers;
+      if (!dataType || dataType === 'reportAccounts') payload.reportAccounts = reportAccounts;
+      if (!dataType || dataType === 'visitPlans') payload.visitPlans = visitPlans;
+      if (!dataType || dataType === 'holidays') payload.holidays = config.holidays || [];
+
       await fetch(config.syncUrl, {
         method: 'POST',
         mode: 'no-cors',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'updateSystem',
-          branches: branches,
-          jobs: jobs,
-          users: allUsers,
-          reportAccounts: reportAccounts,
-          visitPlans: visitPlans,
-          holidays: config.holidays || [],
-          adminUsername: config.adminUsername,
-          adminPassword: config.adminPassword
-        })
+        body: JSON.stringify(payload)
       });
-      logAction('حفظ في السحابة', 'تحديث جميع بيانات النظام في جوجل شيت');
+      logAction('حفظ في السحابة', `تحديث بيانات ${dataType || 'النظام'} في جوجل شيت`);
       alert("تم إرسال البيانات للسحابة بنجاح!");
     } catch (err) { alert("حدث خطأ أثناء الاتصال بالسحابة"); }
     finally { setIsPushing(false); }
@@ -122,13 +127,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   const inputClasses = "px-4 py-3 rounded-xl border border-slate-600 bg-slate-900 text-white font-bold outline-none focus:border-blue-500 w-full transition-all";
-
-  const shareInviteLink = async () => {
-    const link = window.location.origin + window.location.pathname + (config.syncUrl ? `?c=${btoa(config.syncUrl)}` : '');
-    logAction('مشاركة رابط التسجيل', 'تم إنشاء رابط دعوة للموظفين');
-    if (navigator.share) { try { await navigator.share({ title: 'نظام الحضور - Uniteam', text: 'رابط تسجيل الموظفين:', url: link }); } catch (err) {} }
-    else { navigator.clipboard.writeText(link).then(() => alert("تم نسخ الرابط!")); }
-  };
 
   const downloadTemplate = (type: 'branches' | 'jobs' | 'users' | 'plans') => {
     let data: any[] = [];
@@ -208,6 +206,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 id: Math.random().toString(36).substr(2, 9),
                 userId: user.id,
                 userName: user.fullName,
+                userSerial: user.serialNumber,
                 branchId: branch.id,
                 branchName: branch.name,
                 date: dateVal
@@ -340,12 +339,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
            <button onClick={() => { onRefresh(); logAction('تحديث البيانات', 'مزامنة البيانات مع السحابة'); }} disabled={isSyncing} className="flex items-center gap-2 px-5 py-3.5 rounded-2xl font-black bg-slate-900 text-blue-400 border border-blue-900/30 text-xs hover:bg-slate-800 transition-all">
              <RefreshCw size={16} className={isSyncing ? 'animate-spin' : ''} /> تحديث البيانات
            </button>
-           <button onClick={shareInviteLink} className="flex items-center gap-2 px-5 py-3.5 rounded-2xl font-black bg-blue-600 hover:bg-blue-500 text-white text-xs shadow-xl transition-all">
-             <Share2 size={16} /> مشاركة الرابط
-           </button>
-           <button onClick={pushToCloud} disabled={isPushing} className="flex items-center gap-2 px-6 py-3.5 rounded-2xl font-black bg-orange-600 hover:bg-orange-500 text-white shadow-xl text-xs transition-all">
-             {isPushing ? <RotateCcw size={16} className="animate-spin" /> : <CloudUpload size={16} />} حفظ في السحابة
-           </button>
         </div>
       </div>
 
@@ -384,6 +377,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <button onClick={() => { downloadTemplate('users'); logAction('تحميل نموذج', 'نموذج استيراد الموظفين'); }} className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-xl text-[10px] font-black"><Download size={14}/> نموذج استيراد</button>
                   <button onClick={() => userFileInputRef.current?.click()} className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-500 rounded-xl text-[10px] font-black"><FileSpreadsheet size={14}/> استيراد موظفين</button>
                   <button onClick={() => { onRefresh(); logAction('تحديث البيانات', 'مزامنة بيانات الموظفين مع السحابة'); }} className="flex items-center gap-2 px-4 py-2 bg-blue-600/10 text-blue-400 border border-blue-900/30 rounded-xl text-[10px] font-black"><RefreshCw size={14} className={isSyncing ? 'animate-spin' : ''} /> تحديث</button>
+                  <button onClick={() => pushToCloud('users')} disabled={isPushing} className="flex items-center gap-2 px-4 py-2 bg-orange-600 hover:bg-orange-500 rounded-xl text-[10px] font-black shadow-lg transition-all">
+                    {isPushing ? <RotateCcw size={14} className="animate-spin" /> : <CloudUpload size={14} />} حفظ في السحابة
+                  </button>
                </div>
              </div>
              <div className="overflow-x-auto">
@@ -509,6 +505,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         )}
         {activeTab === 'branches' && (
           <div className="space-y-6">
+            <div className="flex justify-between items-center bg-slate-900/50 p-4 rounded-2xl border border-slate-700">
+              <div className="flex items-center gap-3">
+                <MapPin size={20} className="text-blue-400" />
+                <h3 className="text-sm font-black text-white uppercase tracking-tighter">إدارة الفروع والمواقع</h3>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => { downloadTemplate('branches'); logAction('تحميل نموذج', 'نموذج استيراد الفروع'); }} className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-xl text-[10px] font-black"><Download size={14}/> نموذج استيراد</button>
+                <button onClick={() => fileInputRef.current?.click()} className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-500 rounded-xl text-[10px] font-black"><FileSpreadsheet size={14}/> استيراد فروع</button>
+                <button onClick={() => pushToCloud('branches')} disabled={isPushing} className="flex items-center gap-2 px-4 py-2 bg-orange-600 hover:bg-orange-500 rounded-xl text-[10px] font-black shadow-lg transition-all">
+                  {isPushing ? <RotateCcw size={14} className="animate-spin" /> : <CloudUpload size={14} />} حفظ في السحابة
+                </button>
+              </div>
+            </div>
             <div className="flex justify-between items-center">
                <h4 className="text-sm font-black text-blue-400 uppercase tracking-widest flex items-center gap-2">الفروع الحالية</h4>
                <div className="flex gap-2">
@@ -517,8 +526,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <Trash2 size={14}/> حذف المحدد ({selectedBranches.size})
                      </button>
                   )}
-                  <button onClick={() => { downloadTemplate('branches'); logAction('تحميل نموذج', 'نموذج استيراد الفروع'); }} className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-xl text-[10px] font-black"><Download size={14}/> نموذج</button>
-                  <button onClick={() => fileInputRef.current?.click()} className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-500 rounded-xl text-[10px] font-black"><FileSpreadsheet size={14}/> استيراد</button>
                </div>
             </div>
             <div className="bg-slate-900/50 p-6 rounded-3xl border border-slate-700 grid grid-cols-1 md:grid-cols-5 gap-4">
@@ -556,12 +563,21 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         )}
         {activeTab === 'jobs' && (
           <div className="space-y-6">
+            <div className="flex justify-between items-center bg-slate-900/50 p-4 rounded-2xl border border-slate-700">
+              <div className="flex items-center gap-3">
+                <Briefcase size={20} className="text-blue-400" />
+                <h3 className="text-sm font-black text-white uppercase tracking-tighter">المسميات الوظيفية</h3>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => { downloadTemplate('jobs'); logAction('تحميل نموذج', 'نموذج استيراد الوظائف'); }} className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-xl text-[10px] font-black"><Download size={14}/> نموذج استيراد</button>
+                <button onClick={() => jobFileInputRef.current?.click()} className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-500 rounded-xl text-[10px] font-black"><FileSpreadsheet size={14}/> استيراد وظائف</button>
+                <button onClick={() => pushToCloud('jobs')} disabled={isPushing} className="flex items-center gap-2 px-4 py-2 bg-orange-600 hover:bg-orange-500 rounded-xl text-[10px] font-black shadow-lg transition-all">
+                  {isPushing ? <RotateCcw size={14} className="animate-spin" /> : <CloudUpload size={14} />} حفظ في السحابة
+                </button>
+              </div>
+            </div>
             <div className="flex justify-between items-center">
                <h4 className="text-sm font-black text-blue-400 uppercase tracking-widest">الوظائف المتاحة</h4>
-               <div className="flex gap-2">
-                  <button onClick={() => { downloadTemplate('jobs'); logAction('تحميل نموذج', 'نموذج استيراد الوظائف'); }} className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-xl text-[10px] font-black"><Download size={14}/> نموذج</button>
-                  <button onClick={() => jobFileInputRef.current?.click()} className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-500 rounded-xl text-[10px] font-black"><FileSpreadsheet size={14}/> استيراد</button>
-               </div>
             </div>
             <div className="flex gap-4 bg-slate-900/50 p-6 rounded-3xl border border-slate-700">
                <input type="text" placeholder="عنوان الوظيفة" className={inputClasses} value={newJobTitle} onChange={e => setNewJobTitle(e.target.value)} />
@@ -623,6 +639,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <button onClick={() => { downloadTemplate('plans'); logAction('تحميل نموذج', 'نموذج استيراد خطط الزيارات'); }} className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-xl text-[10px] font-black"><Download size={14}/> نموذج استيراد</button>
                 <button onClick={() => planFileInputRef.current?.click()} className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-500 rounded-xl text-[10px] font-black"><FileSpreadsheet size={14}/> استيراد الخطط</button>
                 <button onClick={() => { setVisitPlans([]); logAction('مسح جميع الخطط', 'تم مسح كافة خطط الزيارات'); }} className="flex items-center gap-2 px-4 py-2 bg-red-600/10 text-red-400 border border-red-900/30 rounded-xl text-[10px] font-black"><Trash2 size={14}/> مسح الكل</button>
+                <button onClick={() => pushToCloud('visitPlans')} disabled={isPushing} className="flex items-center gap-2 px-4 py-2 bg-orange-600 hover:bg-orange-500 rounded-xl text-[10px] font-black shadow-lg transition-all">
+                  {isPushing ? <RotateCcw size={14} className="animate-spin" /> : <CloudUpload size={14} />} حفظ في السحابة
+                </button>
               </div>
             </div>
             <div className="overflow-x-auto">
@@ -649,7 +668,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           </div>
                         </td>
                         <td className="py-4 px-2">
-                          <span className="text-xs text-slate-400 font-mono">{user?.serialNumber || 'N/A'}</span>
+                          <span className="text-xs text-slate-400 font-mono">{user?.serialNumber || plan.userSerial || 'N/A'}</span>
                         </td>
                         <td className="py-4 px-2">
                           <span className="text-xs text-emerald-400 font-bold">{branch?.name || plan.branchName || 'فرع محذوف'}</span>
@@ -670,6 +689,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         )}
         {activeTab === 'holidays' && (
           <div className="space-y-6">
+            <div className="flex justify-between items-center bg-slate-900/50 p-4 rounded-2xl border border-slate-700">
+              <div className="flex items-center gap-3">
+                <Calendar size={20} className="text-blue-400" />
+                <h3 className="text-sm font-black text-white uppercase tracking-tighter">إجازات الموظفين</h3>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => pushToCloud('holidays')} disabled={isPushing} className="flex items-center gap-2 px-4 py-2 bg-orange-600 hover:bg-orange-500 rounded-xl text-[10px] font-black shadow-lg transition-all">
+                  {isPushing ? <RotateCcw size={14} className="animate-spin" /> : <CloudUpload size={14} />} حفظ في السحابة
+                </button>
+              </div>
+            </div>
             <div className="flex justify-between items-center">
                <h4 className="text-sm font-black text-blue-400 uppercase tracking-widest flex items-center gap-2"><Calendar size={18}/> الإجازات الرسمية</h4>
             </div>
@@ -689,6 +719,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         )}
         {activeTab === 'report-access' && (
           <div className="space-y-6">
+            <div className="flex justify-between items-center bg-slate-900/50 p-4 rounded-2xl border border-slate-700">
+              <div className="flex items-center gap-3">
+                <Key size={20} className="text-blue-400" />
+                <h3 className="text-sm font-black text-white uppercase tracking-tighter">حسابات متابعة التقارير</h3>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => pushToCloud('reportAccounts')} disabled={isPushing} className="flex items-center gap-2 px-4 py-2 bg-orange-600 hover:bg-orange-500 rounded-xl text-[10px] font-black shadow-lg transition-all">
+                  {isPushing ? <RotateCcw size={14} className="animate-spin" /> : <CloudUpload size={14} />} حفظ في السحابة
+                </button>
+              </div>
+            </div>
             <h4 className="text-sm font-black text-blue-400 flex items-center gap-2 uppercase tracking-widest"><Key size={20}/> حسابات متابعي التقارير</h4>
             <div className="bg-slate-900/50 p-6 rounded-3xl border border-slate-700 space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4"><input type="text" placeholder="اسم المستخدم" className={inputClasses} value={newRepUser} onChange={e => setNewRepUser(e.target.value)} /><input type="password" placeholder="كلمة المرور" className={inputClasses} value={newRepPass} onChange={e => setNewRepPass(e.target.value)} /></div>
@@ -840,6 +881,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
         )}
         {activeTab === 'settings' && (
           <div className="space-y-6">
+            <div className="flex justify-between items-center bg-slate-900/50 p-4 rounded-2xl border border-slate-700">
+              <div className="flex items-center gap-3">
+                <Monitor size={20} className="text-blue-400" />
+                <h3 className="text-sm font-black text-white uppercase tracking-tighter">إعدادات النظام</h3>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => pushToCloud()} disabled={isPushing} className="flex items-center gap-2 px-4 py-2 bg-orange-600 hover:bg-orange-500 rounded-xl text-[10px] font-black shadow-lg transition-all">
+                  {isPushing ? <RotateCcw size={14} className="animate-spin" /> : <CloudUpload size={14} />} حفظ الكل في السحابة
+                </button>
+              </div>
+            </div>
             <h4 className="text-sm font-black text-blue-400 flex items-center gap-2 uppercase tracking-widest"><Monitor size={20}/> إعدادات النظام المتقدمة</h4>
             <div className="bg-slate-900/50 p-6 rounded-3xl border border-slate-700 space-y-6">
               <div className="space-y-2">
