@@ -95,17 +95,14 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       const payload: any = {
         action: 'updateSystem',
         adminUsername: config.adminUsername,
-        adminPassword: config.adminPassword
+        adminPassword: config.adminPassword,
+        branches: branches,
+        jobs: jobs,
+        users: allUsers,
+        reportAccounts: reportAccounts,
+        visitPlans: visitPlans,
+        holidays: config.holidays || []
       };
-
-      // If dataType is provided, we only send that specific data
-      // Otherwise we send everything (fallback)
-      if (!dataType || dataType === 'branches') payload.branches = branches;
-      if (!dataType || dataType === 'jobs') payload.jobs = jobs;
-      if (!dataType || dataType === 'users') payload.users = allUsers;
-      if (!dataType || dataType === 'reportAccounts') payload.reportAccounts = reportAccounts;
-      if (!dataType || dataType === 'visitPlans') payload.visitPlans = visitPlans;
-      if (!dataType || dataType === 'holidays') payload.holidays = config.holidays || [];
 
       await fetch(config.syncUrl, {
         method: 'POST',
