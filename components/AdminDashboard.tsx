@@ -132,7 +132,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
       });
       logAction('حفظ في السحابة', `تحديث بيانات ${dataType || 'النظام'} في جوجل شيت`);
       alert("تم إرسال البيانات للسحابة بنجاح!");
-    } catch (err) { alert("حدث خطأ أثناء الاتصال بالسحابة"); }
+    } catch (err) { 
+      logAction('فشل الحفظ في السحابة', `الخطأ: ${err instanceof Error ? err.message : String(err)}`);
+      alert("حدث خطأ أثناء الاتصال بالسحابة"); 
+    }
     finally { setIsPushing(false); }
   };
 
@@ -280,7 +283,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
            logAction('استيراد بيانات', 'تم استيراد بيانات من ملف إكسل');
            alert("تم استيراد البيانات بنجاح! يرجى النقر على 'حفظ في السحابة' لتأكيد التغييرات.");
         }
-      } catch (err) { alert("خطأ في قراءة ملف الإكسل. تأكد من صحة البيانات."); }
+      } catch (err) { 
+        logAction('فشل استيراد إكسل', `النوع: ${type}, الخطأ: ${err instanceof Error ? err.message : String(err)}`);
+        alert("خطأ في قراءة ملف الإكسل. تأكد من صحة البيانات."); 
+      }
       if(e.target) e.target.value = '';
     }; reader.readAsBinaryString(file);
   };
