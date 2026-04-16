@@ -39,21 +39,25 @@ export default function Login({
     
     if (!navigator.onLine) {
       setError('عذراً، لا يمكن إتمام عملية التسجيل والجهاز غير متصل بالإنترنت.');
+      logAction('فشل تسجيل مستخدم جديد', 'السبب: الجهاز غير متصل بالإنترنت');
       return;
     }
 
     if (!fullName || !nationalId || !password || !selectedJob || !defaultBranch) {
       setError('يرجى إكمال جميع البيانات واختيار الوظيفة والفرع الأساسي');
+      logAction('فشل تسجيل مستخدم جديد', 'السبب: بيانات ناقصة');
       return;
     }
     
     if (nationalId.length !== 14) {
       setError('الرقم القومي يجب أن يكون 14 رقماً');
+      logAction('فشل تسجيل مستخدم جديد', `السبب: طول الرقم القومي غير صحيح (${nationalId.length})`);
       return;
     }
     
     if (password.length < 6) {
       setError('كلمة المرور يجب ألا تقل عن 6 أرقام/حروف');
+      logAction('فشل تسجيل مستخدم جديد', 'السبب: كلمة المرور قصيرة جداً');
       return;
     }
     
@@ -62,6 +66,7 @@ export default function Login({
     const existingById = allUsers.find(u => u.nationalId === nationalId);
     if (existingById) {
       setError('عذراً، هذا الرقم القومي مسجل مسبقاً في النظام.');
+      logAction('فشل تسجيل مستخدم جديد', `السبب: الرقم القومي مسجل مسبقاً (${nationalId})`);
       return;
     }
 
@@ -73,6 +78,7 @@ export default function Login({
     );
     if (deviceOwner) {
       setError(`عذراً، هذا الهاتف مرتبط بالفعل بحساب موظف آخر (${deviceOwner.fullName}).`);
+      logAction('فشل تسجيل مستخدم جديد', `السبب: الهاتف مرتبط بموظف آخر (${deviceOwner.fullName})`);
       return;
     }
 
@@ -122,11 +128,13 @@ export default function Login({
 
     if (!navigator.onLine) {
       setError('عذراً، لا يمكن تسجيل الدخول والجهاز غير متصل بالإنترنت.');
+      logAction('فشل تسجيل دخول موظف', 'السبب: الجهاز غير متصل بالإنترنت');
       return;
     }
     
     if (allUsers.length === 0 && adminConfig.syncUrl) {
        setError('جاري جلب البيانات، يرجى الانتظار ثوانٍ...');
+       logAction('فشل تسجيل دخول موظف', 'السبب: جاري مزامنة البيانات');
        return;
     }
 
@@ -143,6 +151,7 @@ export default function Login({
       
       if (otherDeviceOwner) {
         setError(`عذراً، هذا الهاتف مسجل باسم موظف آخر (${otherDeviceOwner.fullName}).`);
+        logAction('فشل تسجيل دخول موظف', `السبب: الهاتف مسجل باسم موظف آخر (${otherDeviceOwner.fullName})`);
         return;
       }
 
