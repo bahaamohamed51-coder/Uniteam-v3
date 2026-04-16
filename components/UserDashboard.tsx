@@ -156,12 +156,16 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
   const handleAttendance = async (type: 'check-in' | 'check-out') => {
     // 1. Connectivity Check
     if (!navigator.onLine) { 
-      setStatus({ type: 'error', msg: 'عذراً، يجب أن يكون الهاتف متصلاً بالإنترنت لإرسال التسجيل.' }); 
+      const msg = 'عذراً، يجب أن يكون الهاتف متصلاً بالإنترنت لإرسال التسجيل.';
+      setStatus({ type: 'error', msg }); 
+      logAction(`فشل تسجيل ${type === 'check-in' ? 'حضور' : 'انصراف'}`, `السبب: ${msg}`);
       return; 
     }
 
     if (!selectedBranchId) { 
-      setStatus({ type: 'error', msg: 'يرجى اختيار الفرع أولاً' }); 
+      const msg = 'يرجى اختيار الفرع أولاً';
+      setStatus({ type: 'error', msg }); 
+      logAction(`فشل تسجيل ${type === 'check-in' ? 'حضور' : 'انصراف'}`, `السبب: ${msg}`);
       return; 
     }
 
@@ -194,7 +198,9 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
             });
         } catch (error) {
             setIsVerifying(false);
-            setStatus({ type: 'error', msg: 'تعذر تحديد الموقع الحالي بدقة. تأكد من تفعيل GPS والمحاولة مرة أخرى.' });
+            const msg = 'تعذر تحديد الموقع الحالي بدقة. تأكد من تفعيل GPS والمحاولة مرة أخرى.';
+            setStatus({ type: 'error', msg });
+            logAction(`فشل تسجيل ${type === 'check-in' ? 'حضور' : 'انصراف'}`, `السبب: ${msg}`);
             return;
         }
     }
@@ -202,19 +208,24 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
     // 3. Client-Side Checks
     const branch = branches.find(b => b.id === selectedBranchId);
     if (!branch) {
+      logAction(`فشل تسجيل ${type === 'check-in' ? 'حضور' : 'انصراف'}`, `السبب: لم يتم اختيار فرع | الإحداثيات: ${lat}, ${lng}`);
       setIsVerifying(false);
       return;
     }
 
     if (branch.name.trim().toLowerCase() === 'out door' && reasonText.trim() === "") {
-        setStatus({ type: 'error', msg: 'تنبيه: عند اختيار Out Door يجب كتابة تفاصيل المكان أو السبب في خانة الملاحظات.' });
+        const msg = 'تنبيه: عند اختيار Out Door يجب كتابة تفاصيل المكان أو السبب في خانة الملاحظات.';
+        setStatus({ type: 'error', msg });
+        logAction(`فشل تسجيل ${type === 'check-in' ? 'حضور' : 'انصراف'}`, `السبب: ${msg} | الإحداثيات: ${lat}, ${lng}`);
         setIsVerifying(false);
         return;
     }
 
     const distance = calculateDistance(lat, lng, branch.latitude, branch.longitude);
     if (distance > branch.radius) { 
-        setStatus({ type: 'error', msg: `بعيد عن الفرع بمسافة ${Math.round(distance)}م. الحد المسموح ${branch.radius}م.` }); 
+        const msg = `بعيد عن الفرع بمسافة ${Math.round(distance)}م. الحد المسموح ${branch.radius}م.`;
+        setStatus({ type: 'error', msg }); 
+        logAction(`فشل تسجيل ${type === 'check-in' ? 'حضور' : 'انصراف'}`, `السبب: ${msg} | الإحداثيات: ${lat}, ${lng}`);
         setIsVerifying(false);
         return; 
     }
@@ -222,7 +233,9 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
     const timeInfo = calculateTimeDiffDetails(type);
 
     if (type === 'check-in' && timeInfo.isLate && reasonText.trim() === "") {
-        setStatus({ type: 'error', msg: 'تنبيه: أنت متأخر عن الموعد الافتراضي، يجب كتابة سبب التأخير في خانة الملاحظات قبل الإرسال.' });
+        const msg = 'تنبيه: أنت متأخر عن الموعد الافتراضي، يجب كتابة سبب التأخير في خانة الملاحظات قبل الإرسال.';
+        setStatus({ type: 'error', msg });
+        logAction(`فشل تسجيل ${type === 'check-in' ? 'حضور' : 'انصراف'}`, `السبب: ${msg} | الإحداثيات: ${lat}, ${lng}`);
         setIsVerifying(false);
         return;
     }
@@ -278,6 +291,7 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
         }
 
         if (!activeLink) {
+            logAction(`فشل تسجيل ${type === 'check-in' ? 'حضور' : 'انصراف'}`, `السبب: NO_LINK (التطبيق غير مربوط بالسحابة) | الإحداثيات: ${lat}, ${lng}`);
             throw new Error("NO_LINK");
         }
 
@@ -316,6 +330,7 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
           // C) Logic Validation
           if (responseText.includes("Error") || responseText.includes("Security Alert")) {
              // Logic Error (User deleted, Distance, etc.)
+             logAction(`فشل تسجيل ${type === 'check-in' ? 'حضور' : 'انصراف'} (خطأ منطقي)`, `السبب: ${responseText} | الإحداثيات: ${lat}, ${lng}`);
              setStatus({ type: 'error', msg: responseText });
              setIsVerifying(false);
              return;
@@ -351,7 +366,7 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
             errorMsg = 'تعذر الوصول للسيرفر. تأكد من اتصال الإنترنت أو صحة الرابط.';
         }
 
-        logAction(`فشل تسجيل ${type === 'check-in' ? 'حضور' : 'انصراف'}`, `السبب: ${errorMsg}`);
+        logAction(`فشل تسجيل ${type === 'check-in' ? 'حضور' : 'انصراف'}`, `السبب: ${errorMsg}${err.message ? ' | تفاصيل: ' + err.message : ''} | الإحداثيات: ${lat}, ${lng}`);
         setStatus({ type: 'error', msg: errorMsg });
     } finally {
         setIsVerifying(false);
