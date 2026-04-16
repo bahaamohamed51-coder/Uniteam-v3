@@ -137,6 +137,7 @@ const App: React.FC = () => {
       });
     } catch (err) {
       setSyncError(true);
+      logAction('فشل المزامنة مع السحابة', `الخطأ: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setIsSyncing(false);
     }
@@ -195,7 +196,7 @@ const App: React.FC = () => {
        if (navigator.onLine) {
          syncWithCloud(config.syncUrl);
        }
-     }, 2000); // 2 seconds interval
+     }, 300000); // 2 seconds interval
 
      return () => clearInterval(intervalId);
   }, [isOnline, config.syncUrl, syncWithCloud, currentUser]);
