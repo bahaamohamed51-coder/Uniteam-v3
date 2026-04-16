@@ -171,11 +171,16 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
         localStorage.setItem('attendance_temp_sync_url', activeSyncUrl); 
         setShowUrlField(false); 
       }
-    } catch (err) { setError('خطأ في الاتصال'); setShowUrlField(true); } finally { setIsLoading(false); setIsRefreshing(false); }
+    } catch (err) { 
+      setError('خطأ في الاتصال'); 
+      setShowUrlField(true);
+      logAction?.('فشل جلب بيانات التقارير', `المستخدم: ${username}, الخطأ: ${err instanceof Error ? err.message : String(err)}`);
+    } finally { setIsLoading(false); setIsRefreshing(false); }
   };
 
   const handleUnlink = () => {
     if (window.confirm('هل أنت متأكد من رغبتك في فك الارتباط بالشركة الحالية؟')) {
+      logAction?.('فك الارتباط بالشركة', `المستخدم: ${username}`);
       onUpdateConfig?.({ syncUrl: '', googleSheetLink: '' });
       setIsLoggedIn(false);
       setLocalSyncUrl('');
