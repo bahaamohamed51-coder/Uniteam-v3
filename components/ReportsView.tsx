@@ -195,11 +195,17 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
       return;
     }
 
+    // helper to get YYYY-MM-DD from any date input
+    const getDateString = (dateInput: any) => {
+      if (!dateInput) return '';
+      const d = new Date(dateInput);
+      if (isNaN(d.getTime())) return '';
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    };
+
     const dataToExport = filteredRecords.map(r => {
-      const d = new Date(r.date);
-      const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
       return {
-        'Date': dateStr,
+        'Date': getDateString(r.date),
         'Time': new Date(r.time).toLocaleTimeString('en-US'),
         'Employee Name': r.name,
         'Serial Number': r.serialNumber || 'N/A', 
@@ -222,15 +228,16 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
   const exportSummaryExcel = () => {
     if (!fromDate || !toDate) { alert('يرجى تحديد الفترة (من تاريخ / إلى تاريخ) لحساب الملخص'); return; }
     
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const [fy, fm, fd] = fromDate.split('-');
-    const start = new Date(parseInt(fy), parseInt(fm)-1, parseInt(fd));
-    start.setHours(0, 0, 0, 0);
-    const [ty, tm, td] = toDate.split('-');
-    const selectedEnd = new Date(parseInt(ty), parseInt(tm)-1, parseInt(td));
-    selectedEnd.setHours(0, 0, 0, 0);
-    const actualEnd = selectedEnd > today ? today : selectedEnd;
+    // Helper for normalized date strings
+    const getDateString = (dateInput: any) => {
+      if (!dateInput) return '';
+      const d = new Date(dateInput);
+      if (isNaN(d.getTime())) return '';
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    };
+
+    const todayStr = getDateString(new Date());
+    const actualEndStr = toDate > todayStr ? todayStr : toDate;
 
     // Determine target users to include (All filtered authorized users, even if they have no records)
     const targetUsers = authorizedUsers.length > 0 ? authorizedUsers.filter(u => {
@@ -252,21 +259,10 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
 
     // Use records but filter them for summary to include "Home" even if branch filter is active
     const summaryRecords = records.filter(r => {
-      const rd = new Date(r.date);
-      rd.setHours(0,0,0,0);
+      const rdStr = getDateString(r.date);
       let m = true;
-      if (fromDate) {
-        const [y, mo, d] = fromDate.split('-');
-        const f = new Date(parseInt(y), parseInt(mo)-1, parseInt(d));
-        f.setHours(0,0,0,0);
-        m = m && rd >= f;
-      }
-      if (toDate) {
-        const [y, mo, d] = toDate.split('-');
-        const t = new Date(parseInt(y), parseInt(mo)-1, parseInt(d));
-        t.setHours(0,0,0,0);
-        m = m && rd <= t;
-      }
+      if (fromDate) m = m && rdStr >= fromDate;
+      if (toDate) m = m && rdStr <= toDate;
       
       if (selectedJobs.length > 0) {
         const selLower = selectedJobs.map(j => j.toLowerCase());
@@ -315,9 +311,14 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
       let userWorkingDaysCount = 0;
       const userWorkingDaysSet = new Set<string>();
 
-      const currentDay = new Date(start);
-      while (currentDay <= actualEnd) {
-        const dateStr = `${currentDay.getFullYear()}-${String(currentDay.getMonth() + 1).padStart(2, '0')}-${String(currentDay.getDate()).padStart(2, '0')}`;
+      const [y, mo, d] = fromDate.split('-');
+      const currentDay = new Date(parseInt(y), parseInt(mo)-1, parseInt(d));
+      currentDay.setHours(0, 0, 0, 0);
+
+      while (true) {
+        const dateStr = getDateString(currentDay);
+        if (dateStr > actualEndStr) break;
+
         const dayOfWeek = currentDay.getDay();
         
         const isWorkingDay = workingDays.includes(dayOfWeek);
@@ -499,12 +500,17 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
   const exportDetailedExcel = () => {
     if (!fromDate || !toDate) { alert('يرجى تحديد الفترة (من تاريخ / إلى تاريخ) لاستخراج التقرير المفصل'); return; }
     
+    // helper to get YYYY-MM-DD from any date input
+    const getDateString = (dateInput: any) => {
+      if (!dateInput) return '';
+      const d = new Date(dateInput);
+      if (isNaN(d.getTime())) return '';
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    };
+
     const [fy, fm, fd] = fromDate.split('-');
-    const start = new Date(parseInt(fy), parseInt(fm)-1, parseInt(fd));
-    start.setHours(0, 0, 0, 0);
-    const [ty, tm, td] = toDate.split('-');
-    const end = new Date(parseInt(ty), parseInt(tm)-1, parseInt(td));
-    end.setHours(0, 0, 0, 0);
+    const currentDayBase = new Date(parseInt(fy), parseInt(fm)-1, parseInt(fd));
+    currentDayBase.setHours(0, 0, 0, 0);
 
     // Determine target users to include (All filtered authorized users)
     const targetUsers = authorizedUsers.length > 0 ? authorizedUsers.filter(u => {
@@ -535,8 +541,7 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
 
     filteredRecords.forEach(r => {
       const userId = r.serialNumber && r.serialNumber !== 'undefined' ? r.serialNumber : r.name;
-      const recordDateObj = new Date(r.date);
-      const dateKey = `${recordDateObj.getFullYear()}-${String(recordDateObj.getMonth() + 1).padStart(2, '0')}-${String(recordDateObj.getDate()).padStart(2, '0')}`;
+      const dateKey = getDateString(r.date);
 
       if (!dailyRecords[userId]) dailyRecords[userId] = {};
       if (!dailyRecords[userId][dateKey]) dailyRecords[userId][dateKey] = {};
@@ -562,37 +567,22 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
       const userJob = fetchedJobs.find(j => j.title === u.jobTitle);
       const workingDays = userJob?.workingDays || [0, 1, 2, 3, 4, 6]; // Default all except Friday
 
-      const currentDay = new Date(start);
-      while (currentDay <= end) {
-        const dateKey = `${currentDay.getFullYear()}-${String(currentDay.getMonth() + 1).padStart(2, '0')}-${String(currentDay.getDate()).padStart(2, '0')}`;
+      const dayWalker = new Date(currentDayBase);
+      while (true) {
+        const dateKey = getDateString(dayWalker);
+        if (dateKey > toDate) break;
+
         const dayData = dailyRecords[userId]?.[dateKey];
         
-        const dayOfWeek = currentDay.getDay();
+        const dayOfWeek = dayWalker.getDay();
         const isHoliday = fetchedHolidays.includes(dateKey);
         const isWorkingDay = workingDays.includes(dayOfWeek);
 
         // Find visit plan for this user and date
         const plan = visitPlans.find(p => {
           if (!p.date) return false;
-          
-          // 1. Strict Date Matching (Normalize both to YYYY-MM-DD)
-          const pDateStr = p.date.toString().trim();
-          let normalizedPDate = pDateStr;
-          if (pDateStr.includes('T')) {
-            normalizedPDate = pDateStr.split('T')[0];
-          } else if (pDateStr.includes(' ')) {
-            normalizedPDate = pDateStr.split(' ')[0];
-          }
-          
-          // If it's not in YYYY-MM-DD format, try to convert it
-          if (!/^\d{4}-\d{2}-\d{2}$/.test(normalizedPDate)) {
-            const d = new Date(pDateStr);
-            if (!isNaN(d.getTime())) {
-              normalizedPDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-            }
-          }
-
-          if (normalizedPDate !== dateKey) return false;
+          const pDateStr = getDateString(p.date);
+          if (pDateStr !== dateKey) return false;
 
           // 2. User Matching
           const pUser = p.userId?.toString().trim();
@@ -666,7 +656,7 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
             'حالة الانصراف': outStatus
           });
         }
-        currentDay.setDate(currentDay.getDate() + 1);
+        dayWalker.setDate(dayWalker.getDate() + 1);
       }
     });
 
@@ -722,21 +712,14 @@ export default function ReportsView({ syncUrl: initialSyncUrl, adminConfig, onUp
   }, [records, authorizedUsers]);
 
   const filteredRecords = useMemo(() => records.filter(r => { 
-    const rd = new Date(r.date); 
-    rd.setHours(0,0,0,0); 
+    if (!r.date) return false;
+    const d = new Date(r.date);
+    if (isNaN(d.getTime())) return false;
+    const rdStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    
     let m = true; 
-    if (fromDate) { 
-      const [y, mo, d] = fromDate.split('-');
-      const f = new Date(parseInt(y), parseInt(mo)-1, parseInt(d));
-      f.setHours(0,0,0,0); 
-      m = m && rd >= f; 
-    } 
-    if (toDate) { 
-      const [y, mo, d] = toDate.split('-');
-      const t = new Date(parseInt(y), parseInt(mo)-1, parseInt(d));
-      t.setHours(0,0,0,0); 
-      m = m && rd <= t; 
-    } 
+    if (fromDate) m = m && rdStr >= fromDate;
+    if (toDate) m = m && rdStr <= toDate;
     
     if (selectedJobs.length > 0) {
       const selLower = selectedJobs.map(j => j.toLowerCase());
