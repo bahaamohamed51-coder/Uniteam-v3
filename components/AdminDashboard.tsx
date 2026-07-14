@@ -1101,7 +1101,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-slate-500 uppercase flex items-center gap-1">كلمة مرور المسؤول (Admin Password)</label>
                   <div className="bg-slate-950/60 border border-slate-800 rounded-xl px-4 py-3 text-xs text-slate-400 font-bold leading-relaxed">
-                    يتم تعديل كلمة مرور المسؤول مباشرة من الكود في ملف <span className="font-mono text-blue-400 font-bold">App.tsx</span> كونه المصدر الرئيسي والوحيد للأمان ومنع الكتابة فوقها في المتصفح.
+                    تواصل مع المسؤل لمعرفة كلمة المرور .
                   </div>
                 </div>
               </div>
