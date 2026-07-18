@@ -40,16 +40,38 @@ export const getDeviceFingerprint = (): string => {
 // نظام مزامنة الوقت الحقيقي وحمايته من التلاعب (Anti-Clock Tampering System)
 // ==========================================
 
-let serverSyncOffset = 0; // الفرق بالمللي ثانية لإضافته لـ Date.now() للوصول للوقت الحقيقي
-let lastSyncPerformanceTime = 0;
-let hasSynced = false;
+let syncBaseTimeMs = Date.now();
+let syncBasePerfMs = performance.now();
+let lastSavedTimeMs = 0;
+let hasSyncedWithServer = false;
 
-// تحميل الفرق المخزن مسبقاً من التخزين المحلي لتسهيل العمل فوراً حتى لو كان الموظف خارج التغطية مؤقتاً
+// 1. تحميل الفرق المخزن مسبقاً من التخزين المحلي لتسهيل العمل فوراً
 const savedOffsetStr = localStorage.getItem('uniteam_time_offset');
+let initialOffset = 0;
 if (savedOffsetStr) {
-  serverSyncOffset = parseInt(savedOffsetStr, 10) || 0;
-  hasSynced = true;
+  initialOffset = parseInt(savedOffsetStr, 10) || 0;
 }
+
+// 2. حساب الوقت الافتراضي عند بدء التشغيل
+let initialTimeMs = Date.now() + initialOffset;
+
+// 3. التحقق من تلاعب الساعة وإعادتها للوراء عند بدء التشغيل
+const lastKnownStr = localStorage.getItem('uniteam_last_known_real_time');
+if (lastKnownStr) {
+  const lastKnown = parseInt(lastKnownStr, 10) || 0;
+  if (initialTimeMs < lastKnown) {
+    console.warn('Clock tampering/rewinding detected on startup.');
+    // نجبر التطبيق على البدء من آخر وقت حقيقي موثق + ثانية واحدة
+    initialTimeMs = lastKnown + 1000;
+    // تعديل الفارق لمنع التلاعب
+    initialOffset = initialTimeMs - Date.now();
+    localStorage.setItem('uniteam_time_offset', initialOffset.toString());
+  }
+}
+
+// تثبيت نقطة الأساس للوقت والمؤقت عالي الدقة (Monotonic Clock)
+syncBaseTimeMs = initialTimeMs;
+syncBasePerfMs = performance.now();
 
 /**
  * مزامنة وقت التطبيق مع خوادم موثوقة (خادم التطبيق أو API عامة)
@@ -67,11 +89,14 @@ export const syncTimeWithServer = async () => {
       const rtt = endTime - startTime; // زمن الرحلة ذهاباً وإياباً
       const adjustedServerTime = serverTime + (rtt / 2); // تصحيح الوقت بإضافة نصف الـ RTT
 
-      serverSyncOffset = adjustedServerTime - Date.now();
-      lastSyncPerformanceTime = endTime;
-      hasSynced = true;
-      localStorage.setItem('uniteam_time_offset', serverSyncOffset.toString());
-      console.log('Time synced with app server. Offset:', serverSyncOffset, 'ms');
+      const offset = adjustedServerTime - Date.now();
+      localStorage.setItem('uniteam_time_offset', offset.toString());
+      
+      // تحديث نقاط الأساس في الذاكرة
+      syncBaseTimeMs = adjustedServerTime;
+      syncBasePerfMs = endTime;
+      hasSyncedWithServer = true;
+      console.log('Time synced with app server. Base:', new Date(syncBaseTimeMs).toISOString());
       return;
     }
   } catch (e) {
@@ -89,11 +114,14 @@ export const syncTimeWithServer = async () => {
         const rtt = endTime - startTime;
         const adjustedServerTime = serverTime + (rtt / 2);
 
-        serverSyncOffset = adjustedServerTime - Date.now();
-        lastSyncPerformanceTime = endTime;
-        hasSynced = true;
-        localStorage.setItem('uniteam_time_offset', serverSyncOffset.toString());
-        console.log('Time synced with WorldTimeAPI (Egypt). Offset:', serverSyncOffset, 'ms');
+        const offset = adjustedServerTime - Date.now();
+        localStorage.setItem('uniteam_time_offset', offset.toString());
+
+        // تحديث نقاط الأساس في الذاكرة
+        syncBaseTimeMs = adjustedServerTime;
+        syncBasePerfMs = endTime;
+        hasSyncedWithServer = true;
+        console.log('Time synced with WorldTimeAPI (Egypt). Base:', new Date(syncBaseTimeMs).toISOString());
         return;
       }
     }
@@ -104,23 +132,20 @@ export const syncTimeWithServer = async () => {
 
 /**
  * الحصول على الوقت الحقيقي الموثق (UTC) غير القابل للتلاعب
+ * يعتمد على مؤقت المتصفح الأحادي (performance.now) لضمان زيادة بمعدل 1 ثانية في الثانية مهما حصل من تلاعب في ساعة الهاتف أثناء الجلسة
  */
 export const getRealNetworkTime = (): Date => {
-  let computedTimeMs = Date.now() + serverSyncOffset;
+  const elapsedMs = performance.now() - syncBasePerfMs;
+  const currentRealTimeMs = syncBaseTimeMs + elapsedMs;
 
-  // فحص التلاعب برجع الساعة إلى الوراء (Anti-Clock Rewinding)
-  const lastKnownStr = localStorage.getItem('uniteam_last_known_real_time');
-  if (lastKnownStr) {
-    const lastKnown = parseInt(lastKnownStr, 10);
-    if (computedTimeMs < lastKnown) {
-      console.warn('Clock tampering detected! Current system clock is behind last known real time.');
-      // إذا قام الموظف بتأخير ساعة هاتفه، نجبر التطبيق على المتابعة من آخر وقت حقيقي معروف + ثانية واحدة لتجنب الاحتيال
-      computedTimeMs = lastKnown + 1000;
-    }
+  // حفظ آخر وقت حقيقي معروف في التخزين المحلي بحد أقصى مرة كل 5 ثوانٍ لتجنب الحلقات اللانهائية السريعة وحماية الأداء
+  const nowPerf = performance.now();
+  if (nowPerf - lastSavedTimeMs > 5000) {
+    localStorage.setItem('uniteam_last_known_real_time', Math.round(currentRealTimeMs).toString());
+    lastSavedTimeMs = nowPerf;
   }
 
-  localStorage.setItem('uniteam_last_known_real_time', computedTimeMs.toString());
-  return new Date(computedTimeMs);
+  return new Date(currentRealTimeMs);
 };
 
 /**
@@ -155,7 +180,7 @@ export function getEgyptTime(dateInput?: Date | number | string): Date {
   const comps = getEgyptDateTimeComponents(baseDate);
   
   // إنشاء كائن تاريخ يعكس قيم الوقت الخاصة بمصر محلياً
-  const d = new Date();
+  const d = new Date(baseDate.getTime());
   d.setFullYear(comps.year, comps.month - 1, comps.day);
   d.setHours(comps.hour, comps.minute, comps.second, 0);
   return d;
