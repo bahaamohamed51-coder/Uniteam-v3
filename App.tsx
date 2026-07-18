@@ -11,7 +11,7 @@ import { syncTimeWithServer } from './utils';
 // ==========================================
 // المصدر الرئيسي الوحيد لكلمة مرور المسؤول (Admin Password)
 // يمكنك تغييرها هنا مباشرة وسيتم تحديثها تلقائياً في كل التطبيق
-const ADMIN_PASSWORD_SSOT = 'B522129';
+const ADMIN_PASSWORD_SSOT = 'Ba522129';
 // ==========================================
 
 const App: React.FC = () => {
