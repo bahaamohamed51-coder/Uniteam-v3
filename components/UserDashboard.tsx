@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { User, Branch, AttendanceRecord, VisitPlan } from '../types';
 import { MapPin, Clock, CheckCircle, AlertCircle, RotateCcw, Cloud, FileText, Navigation, Calendar } from 'lucide-react';
-import { calculateDistance, getDeviceFingerprint, getEgyptTime, getRealNetworkTime, verifyGPSIntegrity, checkDeveloperModeActive } from '../utils';
+import { calculateDistance, getDeviceFingerprint, getEgyptTime, getRealNetworkTime } from '../utils';
 
 interface UserDashboardProps {
   user: User;
@@ -172,21 +172,9 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
     setIsVerifying(true);
     setStatus({ type: 'none', msg: '' });
 
-    // أ. فحص وضع المطورين (Anti-Developer Mode Option)
-    const devCheck = await checkDeveloperModeActive();
-    if (devCheck.isDev) {
-      setIsVerifying(false);
-      setStatus({ type: 'error', msg: devCheck.reason });
-      logAction(`فشل تسجيل ${type === 'check-in' ? 'حضور' : 'انصراف'} (وضع المطور نشط)`, `السبب: ${devCheck.reason}`);
-      return;
-    }
-
     // 2. Location Confirmation Logic
     let lat = 0;
     let lng = 0;
-    let rawPositionObj: any = null;
-    let gpsStartTime = performance.now();
-    let gpsResponseTimeMs = 0;
 
     // Check if we have a fresh background location (less than 60 seconds old)
     const isBackgroundLocationFresh = liveLocation && (Date.now() - liveLocation.timestamp < 60000);
@@ -194,18 +182,8 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
     if (isBackgroundLocationFresh && liveLocation) {
         lat = liveLocation.lat;
         lng = liveLocation.lng;
-        rawPositionObj = {
-          coords: {
-            latitude: lat,
-            longitude: lng,
-            accuracy: liveLocation.accuracy,
-            mocked: (liveLocation as any).mocked
-          }
-        };
-        gpsResponseTimeMs = 150; // القيمة الافتراضية للفحص المسبق
     } else {
         try {
-            gpsStartTime = performance.now();
             const position = await new Promise<GeolocationPosition>((resolve, reject) => {
                 navigator.geolocation.getCurrentPosition(resolve, reject, {
                     enableHighAccuracy: true,
@@ -213,10 +191,8 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
                     maximumAge: 0
                 });
             });
-            gpsResponseTimeMs = performance.now() - gpsStartTime;
             lat = position.coords.latitude;
             lng = position.coords.longitude;
-            rawPositionObj = position;
             setLiveLocation({
                 lat, lng, accuracy: position.coords.accuracy, timestamp: position.timestamp
             });
@@ -227,15 +203,6 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
             logAction(`فشل تسجيل ${type === 'check-in' ? 'حضور' : 'انصراف'}`, `السبب: ${msg}`);
             return;
         }
-    }
-
-    // ب. فحص تزييف الموقع وحظر الـ (Fake GPS / Mock Location)
-    const gpsCheck = verifyGPSIntegrity(rawPositionObj, gpsResponseTimeMs);
-    if (gpsCheck.isMocked) {
-      setIsVerifying(false);
-      setStatus({ type: 'error', msg: gpsCheck.reason });
-      logAction(`فشل تسجيل ${type === 'check-in' ? 'حضور' : 'انصراف'} (تزييف موقع)`, `السبب: ${gpsCheck.reason} | الإحداثيات: ${lat}, ${lng}`);
-      return;
     }
 
     // 3. Client-Side Checks
