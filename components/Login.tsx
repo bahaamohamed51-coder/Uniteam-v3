@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { User, AppConfig, Job, Branch } from '../types';
 import { UserPlus, LogIn, ShieldAlert, Briefcase, Loader2, Link as LinkIcon, Smartphone, AlertCircle, WifiOff, MapPin, Eye, EyeOff } from 'lucide-react';
-import { getDeviceFingerprint } from '../utils';
+import { getDeviceFingerprint, checkDeveloperModeActive } from '../utils';
 
 interface LoginProps {
   onLogin: (user: User) => void;
@@ -40,6 +40,13 @@ export default function Login({
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    const devCheck = await checkDeveloperModeActive();
+    if (devCheck.isDev) {
+      setError(devCheck.reason);
+      logAction('فشل تسجيل مستخدم جديد (وضع المطور نشط)', `السبب: ${devCheck.reason}`);
+      return;
+    }
+    
     if (!navigator.onLine) {
       setError('عذراً، لا يمكن إتمام عملية التسجيل والجهاز غير متصل بالإنترنت.');
       logAction('فشل تسجيل مستخدم جديد', 'السبب: الجهاز غير متصل بالإنترنت');
@@ -61,6 +68,12 @@ export default function Login({
     if (password.length < 6) {
       setError('كلمة المرور يجب ألا تقل عن 6 أرقام/حروف');
       logAction('فشل تسجيل مستخدم جديد', 'السبب: كلمة المرور قصيرة جداً');
+      return;
+    }
+
+    if (password.startsWith('0')) {
+      setError('كلمة المرور لا يمكن أن تبدأ بالرقم صفر (0) أو تكون أصفاراً فقط .');
+      logAction('فشل تسجيل مستخدم جديد', 'السبب: كلمة المرور تبدأ بصفر');
       return;
     }
     
@@ -128,6 +141,13 @@ export default function Login({
 
   const handleEmployeeLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    const devCheck = await checkDeveloperModeActive();
+    if (devCheck.isDev) {
+      setError(devCheck.reason);
+      logAction('فشل تسجيل دخول موظف (وضع المطور نشط)', `السبب: ${devCheck.reason}`);
+      return;
+    }
 
     if (!navigator.onLine) {
       setError('عذراً، لا يمكن تسجيل الدخول والجهاز غير متصل بالإنترنت.');
