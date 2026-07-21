@@ -6,7 +6,7 @@ import AdminDashboard from './components/AdminDashboard';
 import UserDashboard from './components/UserDashboard';
 import ReportsView from './components/ReportsView';
 import { ShieldCheck, User as UserIcon, Cloud, CloudOff, RefreshCw, FileSpreadsheet, Home, Download, Share, PlusSquare, X, Wifi } from 'lucide-react';
-import { syncTimeWithServer, initDeviceFingerprint } from './utils';
+import { syncTimeWithServer } from './utils';
 
 // ==========================================
 // المصدر الرئيسي الوحيد لكلمة مرور المسؤول (Admin Password)
@@ -23,7 +23,6 @@ const App: React.FC = () => {
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [visitPlans, setVisitPlans] = useState<VisitPlan[]>([]);
   const [isSyncing, setIsSyncing] = useState(false);
-  const [isDeviceReady, setIsDeviceReady] = useState(false);
   const [syncError, setSyncError] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [activeView, setActiveView] = useState<'main' | 'reports'>('main');
@@ -166,20 +165,8 @@ const App: React.FC = () => {
 
   // Initial Data Load
   useEffect(() => {
-    const initializeApp = async () => {
-      // مزامنة الوقت فور تشغيل التطبيق
-      syncTimeWithServer().catch(e => console.warn('On-load time sync failed', e));
-      
-      // تهيئة المعرف الآمن للجهاز (IndexedDB / Capacitor)
-      try {
-        await initDeviceFingerprint();
-      } catch (e) {
-        console.error("Device fingerprint initialization failed:", e);
-      } finally {
-        setIsDeviceReady(true);
-      }
-    };
-    initializeApp();
+    // مزامنة الوقت فور تشغيل التطبيق
+    syncTimeWithServer().catch(e => console.warn('On-load time sync failed', e));
 
     const savedUser = localStorage.getItem('attendance_current_user');
     const savedBranches = localStorage.getItem('attendance_branches');
@@ -330,23 +317,6 @@ const App: React.FC = () => {
 
   // Determine if we should show an install button (Android or iOS web)
   const showInstallButton = !isInStandaloneMode && (installPrompt || isIos);
-
-  if (!isDeviceReady) {
-    return (
-      <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-6 text-white text-center">
-        <div className="bg-blue-600 p-4 rounded-3xl shadow-2xl mb-6 text-white animate-bounce">
-          <ShieldCheck size={48} />
-        </div>
-        <h2 className="text-2xl font-black mb-2 tracking-tighter">Uniteam Secure</h2>
-        <p className="text-slate-400 text-xs font-bold leading-relaxed max-w-xs">
-          جاري تهيئة نظام الأمان المتقدم والتحقق من المعرف الفريد للجهاز...
-        </p>
-        <div className="mt-8 flex items-center gap-2 text-blue-400 text-[10px] font-bold uppercase tracking-widest animate-pulse">
-          <RefreshCw size={12} className="animate-spin" /> Secure ID Initializing
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen flex flex-col relative z-10">
