@@ -348,8 +348,6 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
         setRecords(prev => [...prev, newRecord]);
         setStatus({ type: 'success', msg: `تم تسجيل ${type === 'check-in' ? 'الحضور' : 'الانصراف'} بنجاح. (${timeInfo.resultString})` });
         setReasonText('');
-        // Sync with cloud immediately after operation
-        onRefresh();
 
     } catch (err: any) {
         console.error("Attendance Error:", err);
