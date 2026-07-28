@@ -218,7 +218,7 @@ const App: React.FC = () => {
     syncWithCloud(urlToSync);
   }, []);
 
-  // Continuous Auto-Reconnect & Periodic Sync
+  // Continuous Auto-Reconnect & Periodic Sync (every 1 minute)
   useEffect(() => {
      const activeUrl = config.syncUrl || config.googleSheetLink || DEFAULT_SYNC_URL;
 
@@ -230,27 +230,15 @@ const App: React.FC = () => {
        syncWithCloud(activeUrl);
      }
 
-     // 2. Poll every 2 minutes to keep data fresh without overloading Google Apps Script limits
+     // 2. Poll every 1 minute (60000 ms) to keep data fresh
      const intervalId = setInterval(() => {
        if (navigator.onLine) {
          syncWithCloud(activeUrl);
        }
-     }, 120000); // Poll every 2 minutes
-
-     // 3. Sync whenever employee switches back to app tab / unlocks phone screen
-     const handleVisibilityOrFocus = () => {
-       if (document.visibilityState === 'visible' && navigator.onLine) {
-         syncWithCloud(activeUrl);
-       }
-     };
-
-     window.addEventListener('focus', handleVisibilityOrFocus);
-     document.addEventListener('visibilitychange', handleVisibilityOrFocus);
+     }, 60000); // Poll every 1 minute
 
      return () => {
        clearInterval(intervalId);
-       window.removeEventListener('focus', handleVisibilityOrFocus);
-       document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
      };
   }, [isOnline, config.syncUrl, config.googleSheetLink, syncWithCloud, currentUser]);
 
