@@ -6,7 +6,7 @@ import AdminDashboard from './components/AdminDashboard';
 import UserDashboard from './components/UserDashboard';
 import ReportsView from './components/ReportsView';
 import { ShieldCheck, User as UserIcon, Cloud, CloudOff, RefreshCw, FileSpreadsheet, Home, Download, Share, PlusSquare, X, Wifi, LogOut } from 'lucide-react';
-import { syncTimeWithServer, initDeviceFingerprint, checkSecurityStatus, SecurityCheckResult } from './utils';
+import { syncTimeWithServer } from './utils';
 
 // ==========================================
 // المصدر الرئيسي الوحيد لكلمة مرور المسؤول (Admin Password)
@@ -32,8 +32,6 @@ const App: React.FC = () => {
   const [isIos, setIsIos] = useState(false);
   const [isInStandaloneMode, setIsInStandaloneMode] = useState(false);
   const [showIosInstructions, setShowIosInstructions] = useState(false);
-
-  const [isDeviceBlocked, setIsDeviceBlocked] = useState<SecurityCheckResult | null>(null);
 
   const [config, setConfig] = useState<AppConfig>(() => {
     const saved = localStorage.getItem('attendance_config');
@@ -181,51 +179,18 @@ const App: React.FC = () => {
     }
   }, []); // Truly stable callback to prevent infinite sync loops
 
-  const fetchLatestServerConfig = useCallback(async (): Promise<string | null> => {
-    if (!navigator.onLine) return null;
-    try {
-      const res = await fetch('./server-config.json?t=' + Date.now());
-      if (res.ok) {
-        const data = await res.json();
-        const sheetLink = data?.googleSheetLink || data?.syncUrl;
-        if (sheetLink && typeof sheetLink === 'string' && sheetLink.startsWith('http')) {
-          setConfig(prev => {
-            const updatedConfig = { 
-              ...prev, 
-              syncUrl: sheetLink, 
-              googleSheetLink: sheetLink,
-              auditLogUrl: data.auditLogUrl !== undefined ? data.auditLogUrl : prev.auditLogUrl
-            };
-            const { adminPassword, ...configToSave } = updatedConfig;
-            localStorage.setItem('attendance_config', JSON.stringify(configToSave));
-            return updatedConfig;
-          });
-          return sheetLink;
-        }
-      }
-    } catch (e) {
-      console.warn('Failed to fetch server-config.json', e);
-    }
-    return null;
-  }, []);
-
   const handleManualRefresh = async () => {
-    setSyncToast('جاري تحديث الرابط والبيانات من السحابة...');
-    
-    // 1. Refresh link from server-config.json first
-    const freshLink = await fetchLatestServerConfig();
-    const targetUrl = freshLink || configRef.current.syncUrl || configRef.current.googleSheetLink || config.syncUrl || config.googleSheetLink;
-
+    const targetUrl = config.syncUrl || config.googleSheetLink;
     if (!targetUrl) {
       setSyncToast('يرجى التأكد من ربط التطبيق بشيت جوجل أولاً');
       setTimeout(() => setSyncToast(null), 3000);
       return;
     }
     
-    // 2. Perform sync using the targetUrl
+    setSyncToast('جاري تحديث البيانات من شيت جوجل...');
     const success = await syncWithCloud(targetUrl, true);
     if (success) {
-      setSyncToast('تم تحديث الرابط وجميع البيانات بنجاح!');
+      setSyncToast('تم تحديث جميع البيانات بنجاح!');
     } else {
       setSyncToast('حدث خطأ أثناء المزامنة، تأكد من الاتصال بالإنترنت');
     }
@@ -236,16 +201,6 @@ const App: React.FC = () => {
   useEffect(() => {
     // مزامنة الوقت فور تشغيل التطبيق
     syncTimeWithServer().catch(e => console.warn('On-load time sync failed', e));
-    // تهيئة معرف الجهاز الثابت (Hardware UUID / IndexedDB)
-    initDeviceFingerprint().catch(e => console.warn('Device fingerprint init failed', e));
-
-    // فحص أمني عند تشغيل التطبيق: منع الاستخدام إذا كان Developer Mode أو Fake GPS مفعّل
-    checkSecurityStatus().then(secRes => {
-      if (!secRes.isAllowed) {
-        setIsDeviceBlocked(secRes);
-        logAction('حظر التطبيق', `تم حظر التطبيق: ${secRes.reason}`);
-      }
-    }).catch(e => console.warn('App startup security check failed', e));
 
     const savedUser = localStorage.getItem('attendance_current_user');
     const savedBranches = localStorage.getItem('attendance_branches');
@@ -311,7 +266,7 @@ const App: React.FC = () => {
        if (navigator.onLine && configRef.current.syncUrl) {
          syncWithCloud(configRef.current.syncUrl);
        }
-      }, 300000); // 5 minutes interval
+     }, 60000); // 1 minute interval
 
      return () => clearInterval(intervalId);
   }, [config.syncUrl, currentUser?.role, syncWithCloud]);
@@ -320,16 +275,43 @@ const App: React.FC = () => {
   useEffect(() => {
     const checkForUpdates = async () => {
       if (!navigator.onLine) return;
-      const newLink = await fetchLatestServerConfig();
-      if (newLink && newLink !== configRef.current.syncUrl) {
-        syncWithCloud(newLink);
+      try {
+        const res = await fetch('./server-config.json?t=' + Date.now());
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.googleSheetLink && data.googleSheetLink.startsWith('http')) {
+            const saved = localStorage.getItem('attendance_config');
+            const currentConfig = saved ? JSON.parse(saved) : null;
+            
+            const hasChanges = !currentConfig || 
+                              data.googleSheetLink !== currentConfig.syncUrl || 
+                              (data.auditLogUrl !== undefined && data.auditLogUrl !== currentConfig.auditLogUrl);
+
+            if (hasChanges) {
+              setConfig(prev => {
+                const updatedConfig = { 
+                  ...prev, 
+                  syncUrl: data.googleSheetLink, 
+                  googleSheetLink: data.googleSheetLink,
+                  auditLogUrl: data.auditLogUrl !== undefined ? data.auditLogUrl : prev.auditLogUrl
+                };
+                const { adminPassword, ...configToSave } = updatedConfig;
+                localStorage.setItem('attendance_config', JSON.stringify(configToSave));
+                return updatedConfig;
+              });
+              syncWithCloud(data.googleSheetLink);
+            }
+          }
+        }
+      } catch (e) {
+        // Ignore errors
       }
     };
 
     checkForUpdates();
     const interval = setInterval(checkForUpdates, 5 * 60000); // Check every 5 minutes
     return () => clearInterval(interval);
-  }, [fetchLatestServerConfig, syncWithCloud]);
+  }, [syncWithCloud]);
 
   useEffect(() => { localStorage.setItem('attendance_branches', JSON.stringify(branches)); }, [branches]);
   useEffect(() => { localStorage.setItem('attendance_jobs', JSON.stringify(jobs)); }, [jobs]);
@@ -387,22 +369,6 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen flex flex-col relative z-10">
-      {isDeviceBlocked && (
-        <div className="fixed inset-0 z-[999] bg-red-600 flex items-center justify-center p-6">
-          <div className="bg-white rounded-3xl p-8 max-w-sm w-full text-center shadow-2xl">
-            <div className="bg-red-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
-              <ShieldCheck size={40} className="text-red-600" />
-            </div>
-            <h2 className="text-2xl font-black text-gray-900 mb-3">تم حظر التطبيق</h2>
-            <p className="text-gray-600 font-bold text-sm leading-relaxed mb-6">
-              {isDeviceBlocked.reason}
-            </p>
-            <p className="text-xs text-gray-400 font-bold">
-              برجاء إيقاف وضع المطورين وتطبيقات Fake GPS ثم إعادة فتح التطبيق
-            </p>
-          </div>
-        </div>
-      )}
       <header className="bg-white/90 backdrop-blur-md border-b border-gray-200 sticky top-0 z-50 h-16">
         <div className="max-w-5xl mx-auto px-4 h-full flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 md:gap-3 shrink-0">
