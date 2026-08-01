@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { User, Branch, AttendanceRecord, VisitPlan } from '../types';
 import { MapPin, Clock, CheckCircle, AlertCircle, RotateCcw, Cloud, FileText, Navigation, Calendar } from 'lucide-react';
-import { calculateDistance, getDeviceFingerprint, getEgyptTime, getRealNetworkTime, checkSecurityStatus } from '../utils';
+import { calculateDistance, getDeviceFingerprint, getEgyptTime, getRealNetworkTime } from '../utils';
 
 interface UserDashboardProps {
   user: User;
@@ -193,19 +193,6 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
       setStatus({ type: 'error', msg }); 
       logAction(`فشل تسجيل ${type === 'check-in' ? 'حضور' : 'انصراف'}`, `السبب: ${msg}`);
       return; 
-    }
-
-    // فحص أمني: التأكد من عدم تفعيل Developer Mode أو Fake GPS
-    try {
-      const secRes = await checkSecurityStatus();
-      if (!secRes.isAllowed) {
-        setIsVerifying(false);
-        setStatus({ type: 'error', msg: secRes.reason || 'تم حظر التسجيل لأسباب أمنية.' });
-        logAction(`فشل تسجيل ${type === 'check-in' ? 'حضور' : 'انصراف'}`, `السبب: الأمان - ${secRes.reason}`);
-        return;
-      }
-    } catch (e) {
-      console.warn('Security check failed during attendance', e);
     }
 
     setIsVerifying(true);
