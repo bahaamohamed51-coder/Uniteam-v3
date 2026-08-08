@@ -59,10 +59,26 @@ jobs:
       # ---------- 4. ضبط رابط الموقع داخل التطبيق ----------
       - name: Configure app URL
         run: |
+          # الأولوية: 1) ما تكتبه عند التشغيل  2) الرابط الموجود في capacitor.config.json
+          #            3) رابط GitHub Pages المشتق من اسم المستودع
           APP_URL="${{ inputs.app_url }}"
+
           if [ -z "$APP_URL" ]; then
-            APP_URL="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/"
+            APP_URL=$(node -p "try{((require('./capacitor.config.json').server)||{}).url||''}catch(e){''}")
+            echo "تم أخذ الرابط من capacitor.config.json"
+          else
+            echo "تم أخذ الرابط من مدخلات التشغيل"
           fi
+
+          # تجاهل القيمة الافتراضية الوهمية أو الرابط الفارغ
+          case "$APP_URL" in
+            ""|*YOUR-LIVE-SITE-URL*)
+              APP_URL="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/"
+              echo "الرابط غير محدد - تم اشتقاقه من اسم المستودع"
+              ;;
+          esac
+
+          echo "::notice title=رابط التطبيق::$APP_URL"
           echo "التطبيق سيفتح: $APP_URL"
           node -e "
             const fs = require('fs');
