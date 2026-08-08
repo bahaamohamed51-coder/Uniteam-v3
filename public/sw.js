@@ -1,5 +1,7 @@
 
-const CACHE_NAME = 'uniteam-cache-v4';
+// رفع الرقم يمسح الكاش القديم بالكامل عند التفعيل،
+// وهو ضروري بعد أي تعديل على ملفات الأمان مثل android-bridge.js
+const CACHE_NAME = 'uniteam-cache-v5';
 const urlsToCache = [
   './index.html',
   './manifest.json',
@@ -34,6 +36,28 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
+  // ملفات الأمان: الشبكة أولاً دائماً، والكاش احتياط عند انقطاع الاتصال فقط.
+  // بدون هذا قد يعمل التطبيق بنسخة قديمة من جسر كشف وضع المطور والموقع الوهمي.
+  if (
+      event.request.url.includes('android-bridge.js') ||
+      event.request.url.includes('server-config.json')
+  ) {
+    event.respondWith(
+      fetch(event.request)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const responseClone = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(event.request, responseClone);
+            });
+          }
+          return networkResponse;
+        })
+        .catch(() => caches.match(event.request))
+    );
+    return;
+  }
+
   // Navigation strategy: Network -> Cache
   if (event.request.mode === 'navigate') {
     event.respondWith(
