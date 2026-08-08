@@ -124,6 +124,16 @@ jobs:
           grep -c "@JavascriptInterface" "$TARGET/AndroidBridge.java"
           grep -n "addJavascriptInterface" "$TARGET/MainActivity.java"
 
+      # ---- أيقونة التطبيق وشاشة البداية من resources/icon.png ----
+      - name: Generate app icons
+        run: |
+          if [ -f "resources/icon.png" ]; then
+            python3 -m pip install --quiet --upgrade pillow
+            python3 native/android/generate-icons.py resources/icon.png android/app/src/main/res
+          else
+            echo "لا توجد resources/icon.png - ستُستخدم أيقونة Capacitor الافتراضية"
+          fi
+
       # ---- صلاحيات الموقع، بدونها يرفض أندرويد الطلب رفضاً صامتاً ----
       - name: Patch AndroidManifest (permissions)
         run: |
