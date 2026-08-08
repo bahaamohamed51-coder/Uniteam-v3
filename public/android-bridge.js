@@ -70,6 +70,11 @@
       return call('getDeviceModel', '');
     },
 
+    /** ملخص حالة الأمان على الجهاز - يفيد في تفسير أي رفض غير متوقع */
+    getSecurityDiagnostics: function () {
+      return call('getSecurityDiagnostics', '');
+    },
+
     /** هل نعمل داخل تطبيق APK مع جسر أصلي فعّال */
     isNativeApp: function () {
       return bridge() !== null;
