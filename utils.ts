@@ -59,15 +59,54 @@ export const getDeviceFingerprint = (): string => {
 
   // 2. الفحص والتخزين للويب مع بناء بصمة عتادية دقيقة (Hardware Fingerprint)
   let deviceId = localStorage.getItem('uniteam_device_token');
+
+  // ترقية المعرّفات القديمة إلى الصيغة المعتمدة.
+  // نسخ سابقة من التطبيق ولّدت معرّفات ببادئات مختلفة (dev_ / native_dev_ / native_hw_)،
+  // وهي محفوظة في متصفحات الموظفين ولا يمسحها تصفير الأجهزة من لوحة المشرف.
+  // بدون هذا السطر ستعود البادئة القديمة إلى الشيت عند إعادة التسجيل.
+  // الصيغتان المعتمدتان فقط: android_ من التطبيق، و hw_ من المتصفح.
+  if (deviceId && !/^(hw_|android_)/.test(deviceId)) {
+    try { localStorage.removeItem('uniteam_device_token'); } catch (e) {}
+    deviceId = null;
+  }
+
+  // إبطال المعرّفات المولّدة بالطريقة المعيبة السابقة.
+  // كانت تبني نصاً يبدأ بمقاس الشاشة ثم تشفّره وتقتطع أول 18 حرفاً،
+  // و18 حرف base64 تمثّل أول 13 بايت فقط - أي مقاس الشاشة وحده،
+  // فيُقطع الجزء العشوائي بالكامل ويحصل كل جهازين متطابقي المواصفات
+  // على المعرّف نفسه. تُكتشف هذه المعرّفات بفك تشفيرها والبحث عن نمط المقاس.
+  if (deviceId && deviceId.indexOf('hw_') === 0) {
+    try {
+      // 16 حرف base64 تُفك إلى 12 بايت، وقد ينتهي المقاس عندها بلا شرطة سفلية
+      const decoded = atob(deviceId.substring(3, 19));
+      if (/^\d{2,5}x\d{2,5}x\d{1,2}(_|$)/.test(decoded)) {
+        try { localStorage.removeItem('uniteam_device_token'); } catch (e) {}
+        deviceId = null;
+      }
+    } catch (e) {
+      // ليس نصاً مشفّراً بـ base64 - معرّف بالصيغة الجديدة، يُترك كما هو
+    }
+  }
+
   if (!deviceId) {
-    // بناء بصمة فريدة تعتمد على شاشة ومعالج ونظام الجهاز
-    const nav = navigator as any;
-    const screenInfo = `${window.screen.width}x${window.screen.height}x${window.screen.colorDepth}`;
-    const hardwareInfo = `${nav.hardwareConcurrency || 4}_${nav.deviceMemory || 4}`;
-    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    const rawHash = `${screenInfo}_${hardwareInfo}_${tz}_${Math.random().toString(36).substring(2, 10)}_${Date.now()}`;
-    
-    deviceId = 'hw_' + btoa(rawHash).replace(/=/g, '').substring(0, 18);
+    // معرّف عشوائي بالكامل. الاعتماد على مواصفات العتاد غير مجدٍ هنا:
+    // ملايين الهواتف تشترك في مقاس الشاشة وعدد الأنوية، فلا تضيف تمييزاً.
+    let random = '';
+    try {
+      const buffer = new Uint8Array(24);
+      (window.crypto || (window as any).msCrypto).getRandomValues(buffer);
+      random = Array.prototype.map
+        .call(buffer, (b: number) => b.toString(36))
+        .join('');
+    } catch (e) {
+      random = '';
+    }
+    // بديل للمتصفحات القديمة التي لا تدعم crypto
+    while (random.length < 18) {
+      random += Math.random().toString(36).substring(2) + Date.now().toString(36);
+    }
+
+    deviceId = 'hw_' + random.replace(/[^a-z0-9]/g, '').substring(0, 18);
     localStorage.setItem('uniteam_device_token', deviceId);
     
     // حفظ نسخة احتياطية في IndexedDB لضمان بقاء الرقم نفسه حتى لو قام الموظف بمسح التخزين المحلي
