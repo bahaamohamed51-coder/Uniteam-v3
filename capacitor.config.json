@@ -1,6 +1,6 @@
 {
   "appId": "com.uniteam.attendance",
-  "appName": "Uniteam Attendance",
+  "appName": "Uniteam",
   "webDir": "dist",
   "bundledWebRuntime": false,
   "server": {
