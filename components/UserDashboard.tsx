@@ -261,7 +261,7 @@ const UserDashboard: React.FC<UserDashboardProps> = ({
             const geoErr = error as GeolocationPositionError;
             let msg = 'تعذر تحديد الموقع الحالي بدقة. تأكد من تفعيل GPS والمحاولة مرة أخرى.';
             if (geoErr && geoErr.code === 1) {
-              msg = 'إذن الوصول للموقع مرفوض. افتح إعدادات الهاتف ← التطبيقات ← Uniteam Attendance ← الأذونات ← الموقع، واختر "السماح أثناء استخدام التطبيق"، ثم أعد المحاولة.';
+              msg = 'إذن الوصول للموقع مرفوض. افتح إعدادات الهاتف ← التطبيقات ← Uniteam ← الأذونات ← الموقع، واختر "السماح أثناء استخدام التطبيق"، ثم أعد المحاولة.';
             } else if (geoErr && geoErr.code === 2) {
               msg = 'تعذر الوصول لخدمة الموقع. تأكد من تفعيل GPS في الهاتف ومن أنك لست في مكان مغلق تماماً.';
             } else if (geoErr && geoErr.code === 3) {
