@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       app_url:
-        description: 'رابط الموقع الذي يفتحه التطبيق (اتركه فارغاً لاستخدام رابط GitHub Pages تلقائياً)'
+        description: 'رابط الموقع الذي يفتحه التطبيق (اتركه فارغاً لاستخدام الرابط الموجود في capacitor.config.json)'
         required: false
         default: ''
       version_name:
@@ -19,17 +19,21 @@ on:
         required: false
         default: '1'
 
+env:
+  KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD || 'Uniteam@2026' }}
+  KEY_ALIAS: ${{ secrets.KEY_ALIAS || 'uniteam' }}
+  KEY_PASSWORD: ${{ secrets.KEY_PASSWORD || 'Uniteam@2026' }}
+
 jobs:
   build:
-    name: Build debug APK
+    name: Build signed APK
     runs-on: ubuntu-latest
 
     steps:
-      # ---------- 1. جلب الكود ----------
+      # ================= 1. البيئة =================
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ---------- 2. تجهيز البيئة ----------
       # Capacitor CLI 8 يتطلب Node 22 أو أحدث
       - name: Setup Node.js 22
         uses: actions/setup-node@v4
@@ -50,14 +54,14 @@ jobs:
           yes | sdkmanager --licenses > /dev/null 2>&1 || true
           sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
 
-      # ---------- 3. تثبيت الحزم ----------
+      # ================= 2. الحزم =================
       - name: Install npm dependencies
         run: npm install --no-audit --no-fund
 
       - name: Install Capacitor
         run: npm install --no-audit --no-fund @capacitor/core@^8.5.0 @capacitor/cli@^8.5.0 @capacitor/android@^8.5.0
 
-      # ---------- 4. ضبط رابط الموقع داخل التطبيق ----------
+      # ================= 3. رابط التطبيق =================
       - name: Configure app URL
         run: |
           # الأولوية: 1) ما تكتبه عند التشغيل  2) الرابط الموجود في capacitor.config.json
@@ -71,7 +75,6 @@ jobs:
             echo "تم أخذ الرابط من مدخلات التشغيل"
           fi
 
-          # تجاهل القيمة الافتراضية الوهمية أو الرابط الفارغ
           case "$APP_URL" in
             ""|*YOUR-LIVE-SITE-URL*)
               APP_URL="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/"
@@ -80,26 +83,23 @@ jobs:
           esac
 
           echo "::notice title=رابط التطبيق::$APP_URL"
-          echo "التطبيق سيفتح: $APP_URL"
+
           node -e "
             const fs = require('fs');
             const path = 'capacitor.config.json';
             const cfg = JSON.parse(fs.readFileSync(path, 'utf8'));
-            cfg.server = {
-              url: process.argv[1],
-              cleartext: true,
-              androidScheme: 'https'
-            };
+            cfg.server = { url: process.argv[1], cleartext: true, androidScheme: 'https' };
             fs.writeFileSync(path, JSON.stringify(cfg, null, 2));
             console.log(fs.readFileSync(path, 'utf8'));
           " "$APP_URL"
+
           echo "APP_URL=$APP_URL" >> "$GITHUB_ENV"
 
-      # ---------- 5. بناء ملفات الويب ----------
+      # ================= 4. بناء الويب =================
       - name: Build web assets
         run: npm run build
 
-      # ---------- 6. إنشاء مشروع أندرويد ----------
+      # ================= 5. مشروع أندرويد =================
       - name: Add Android platform
         run: |
           if [ -d "android" ]; then
@@ -111,29 +111,118 @@ jobs:
       - name: Sync Capacitor
         run: npx cap sync android
 
-      # ---------- 7. ضبط رقم الإصدار ----------
+      # ---- حقن الجسر الأصلي: ANDROID_ID + وضع المطور + الموقع الوهمي ----
+      - name: Inject native bridge (Java)
+        run: |
+          TARGET="android/app/src/main/java/com/uniteam/attendance"
+          mkdir -p "$TARGET"
+          cp native/android/AndroidBridge.java "$TARGET/AndroidBridge.java"
+          cp native/android/MainActivity.java  "$TARGET/MainActivity.java"
+          echo "ملفات Java بعد الحقن:"
+          ls -1 "$TARGET"
+          echo "--- تأكيد وجود الواجهة ---"
+          grep -c "@JavascriptInterface" "$TARGET/AndroidBridge.java"
+          grep -n "addJavascriptInterface" "$TARGET/MainActivity.java"
+
+      # ---- صلاحيات الموقع، بدونها يرفض أندرويد الطلب رفضاً صامتاً ----
+      - name: Patch AndroidManifest (permissions)
+        run: |
+          python3 native/android/patch-manifest.py android/app/src/main/AndroidManifest.xml
+          echo "--- الصلاحيات النهائية ---"
+          grep "uses-permission" android/app/src/main/AndroidManifest.xml
+
+      # ---- التوقيع الثابت، لتثبيت ANDROID_ID وإتاحة التحديث فوق النسخة القديمة ----
+      - name: Setup signing key
+        run: |
+          if [ -n "${{ secrets.KEYSTORE_BASE64 }}" ]; then
+            echo "استخدام المفتاح من أسرار المستودع"
+            echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > android/app/uniteam-release.keystore
+          else
+            echo "استخدام المفتاح المرفق في المستودع"
+            cp native/android/uniteam-release.keystore android/app/uniteam-release.keystore
+          fi
+          keytool -list -keystore android/app/uniteam-release.keystore \
+                  -storepass "$KEYSTORE_PASSWORD" | head -5
+
+      - name: Patch build.gradle (signing)
+        run: python3 native/android/patch-gradle.py android/app/build.gradle
+
+      # ================= 6. رقم الإصدار =================
       - name: Set version
         run: |
           VN="${{ inputs.version_name }}"
           VC="${{ inputs.version_code }}"
           [ -z "$VN" ] && VN="1.0"
           [ -z "$VC" ] && VC="1"
-          sed -i "s/versionCode .*/versionCode ${VC}/"       android/app/build.gradle
+          sed -i "s/versionCode .*/versionCode ${VC}/"         android/app/build.gradle
           sed -i "s/versionName \".*\"/versionName \"${VN}\"/" android/app/build.gradle
           grep -E "versionCode|versionName" android/app/build.gradle
 
-      # ---------- 8. بناء APK ----------
-      - name: Build debug APK
+      # ================= 7. البناء =================
+      - name: Build release APK
         working-directory: android
+        env:
+          KEYSTORE_PATH: uniteam-release.keystore
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug --stacktrace --no-daemon
+          ./gradlew assembleRelease --stacktrace --no-daemon
 
-      # ---------- 9. تجهيز الملف الناتج ----------
+      - name: Verify APK signature and permissions
+        run: |
+          set -e
+          APK="android/app/build/outputs/apk/release/app-release.apk"
+          SDK="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          BT=$(ls -d "$SDK"/build-tools/* | sort -V | tail -1)
+          echo "أدوات البناء: $BT"
+
+          echo "===== 1) التوقيع ====="
+          "$BT/apksigner" verify --print-certs "$APK" | head -12
+
+          echo ""
+          echo "===== 2) الصلاحيات داخل الـ APK ====="
+          # aapt الأصلي قد لا يكون موجوداً في إصدارات build-tools الحديثة
+          PERMS=""
+          if [ -x "$BT/aapt2" ]; then
+            PERMS=$("$BT/aapt2" dump permissions "$APK" 2>/dev/null || true)
+          fi
+          if [ -z "$PERMS" ] && [ -x "$BT/aapt" ]; then
+            PERMS=$("$BT/aapt" dump permissions "$APK" 2>/dev/null || true)
+          fi
+
+          if [ -z "$PERMS" ]; then
+            echo "تعذر قراءة الصلاحيات من الـ APK - يُعتمد على فحص ملف Manifest المصدري"
+            PERMS=$(cat android/app/src/main/AndroidManifest.xml)
+          fi
+          echo "$PERMS" | grep -i "permission" || true
+
+          echo ""
+          echo "===== 3) فحص إلزامي ====="
+          FAILED=0
+          for P in ACCESS_FINE_LOCATION ACCESS_COARSE_LOCATION INTERNET QUERY_ALL_PACKAGES; do
+            if echo "$PERMS" | grep -q "$P"; then
+              echo "  [نجاح] $P"
+            else
+              echo "  [فشل]  $P غير موجودة"
+              FAILED=1
+            fi
+          done
+
+          echo ""
+          echo "===== 4) الجسر الأصلي ====="
+          if unzip -l "$APK" | grep -q "classes.dex"; then
+            echo "  [نجاح] كود Java مُجمَّع داخل الـ APK"
+          else
+            echo "  [فشل]  لا يوجد classes.dex"
+            FAILED=1
+          fi
+
+          exit $FAILED
+
+      # ================= 8. الناتج =================
       - name: Prepare APK
         run: |
           mkdir -p output
-          cp android/app/build/outputs/apk/debug/app-debug.apk output/Uniteam-Attendance.apk
+          cp android/app/build/outputs/apk/release/app-release.apk output/Uniteam-Attendance.apk
           ls -lh output/
 
       - name: Upload APK
@@ -144,7 +233,7 @@ jobs:
           retention-days: 90
           if-no-files-found: error
 
-      # ---------- 10. ملخص ----------
+      # ================= 9. الملخص =================
       - name: Summary
         if: success()
         run: |
@@ -157,13 +246,21 @@ jobs:
             echo "| اسم الملف | Uniteam-Attendance.apk |"
             echo "| الحجم | ${SIZE} |"
             echo "| الإصدار | ${{ inputs.version_name }} (${{ inputs.version_code }}) |"
+            echo "| نوع البناء | release موقّع بمفتاح ثابت |"
             echo "| الرابط داخل التطبيق | ${APP_URL} |"
+            echo ""
+            echo "### الميزات المفعّلة"
+            echo ""
+            echo "- إذن الوصول للموقع مطلوب من النظام"
+            echo "- معرّف الجهاز مأخوذ من ANDROID_ID الثابت"
+            echo "- كشف وضع المطور من إعدادات النظام"
+            echo "- كشف برامج الموقع الوهمي"
             echo ""
             echo "### مكان التحميل"
             echo ""
-            echo "انزل إلى **أسفل هذه الصفحة** وستجد قسم **Artifacts**، وبداخله عنصر باسم **Uniteam-Attendance-APK**."
+            echo "انزل إلى **أسفل هذه الصفحة** وستجد قسم **Artifacts**، وبداخله **Uniteam-Attendance-APK**."
             echo ""
-            echo "ما يُحمَّل هو ملف **ZIP** — فك ضغطه لتجد ملف APK بالداخل."
+            echo "ما يُحمَّل ملف **ZIP** — فك ضغطه لتجد ملف APK بالداخل."
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Failure hint
