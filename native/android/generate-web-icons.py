@@ -12,6 +12,7 @@
   - أيقونة iOS عند الإضافة للشاشة الرئيسية
 """
 
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -110,13 +111,21 @@ def main() -> int:
     save(canvas, PUBLIC / "icon-maskable.png")
 
     # 3) تحديث manifest.json ليشير إلى المقاسات الصحيحة
+    #
+    # يُضاف وسم إصدار مشتق من محتوى الصورة إلى كل رابط.
+    # السبب: المتصفح يحفر أيقونة التطبيق المثبّت لحظة التثبيت ولا يجدّدها
+    # ما دام الرابط كما هو. وبتغيّر الوسم مع تغيّر الصورة يصير الرابط جديداً
+    # فيلتقط المتصفح الأيقونة الجديدة.
+    version = hashlib.sha1(SOURCE.read_bytes()).hexdigest()[:8]
+    print(f"\n  وسم إصدار الأيقونة: {version}")
+
     manifest_path = PUBLIC / "manifest.json"
     if manifest_path.exists():
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         manifest["icons"] = [
-            {"src": "./icon-192.png",      "sizes": "192x192", "type": "image/png", "purpose": "any"},
-            {"src": "./icon.png",          "sizes": "512x512", "type": "image/png", "purpose": "any"},
-            {"src": "./icon-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"},
+            {"src": f"./icon-192.png?v={version}",      "sizes": "192x192", "type": "image/png", "purpose": "any"},
+            {"src": f"./icon.png?v={version}",          "sizes": "512x512", "type": "image/png", "purpose": "any"},
+            {"src": f"./icon-maskable.png?v={version}", "sizes": "512x512", "type": "image/png", "purpose": "maskable"},
         ]
         manifest_path.write_text(
             json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
