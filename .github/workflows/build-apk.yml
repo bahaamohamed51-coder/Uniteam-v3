@@ -88,7 +88,14 @@ jobs:
             const fs = require('fs');
             const path = 'capacitor.config.json';
             const cfg = JSON.parse(fs.readFileSync(path, 'utf8'));
-            cfg.server = { url: process.argv[1], cleartext: true, androidScheme: 'https' };
+            // دمج لا استبدال: الاستبدال كان يمحو بقية إعدادات server
+            // مثل errorPath المسؤول عن صفحة انقطاع الاتصال.
+            const server = cfg.server || {};
+            server.url = process.argv[1];
+            server.cleartext = true;
+            server.androidScheme = 'https';
+            if (!server.errorPath) server.errorPath = 'offline.html';
+            cfg.server = server;
             fs.writeFileSync(path, JSON.stringify(cfg, null, 2));
             console.log(fs.readFileSync(path, 'utf8'));
           " "$APP_URL"
@@ -110,6 +117,36 @@ jobs:
 
       - name: Sync Capacitor
         run: npx cap sync android
+
+      # ---- التأكد من صفحة انقطاع الاتصال داخل التطبيق ----
+      # بدونها يعرض WebView صفحة الخطأ الافتراضية وفيها رابط الخادم مكشوفاً
+      - name: Verify offline page
+        run: |
+          set -e
+          CFG="android/app/src/main/assets/capacitor.config.json"
+          PAGE="android/app/src/main/assets/public/offline.html"
+
+          echo "--- الإعداد المضمّن في التطبيق ---"
+          cat "$CFG"
+
+          ERR=$(node -p "((require('./$CFG').server)||{}).errorPath || ''")
+          if [ -z "$ERR" ]; then
+            echo "  [فشل] errorPath غير موجود في إعدادات التطبيق"
+            exit 1
+          fi
+          echo "  [نجاح] errorPath = $ERR"
+
+          if [ ! -f "android/app/src/main/assets/public/$ERR" ]; then
+            echo "  [فشل] الملف $ERR غير موجود داخل أصول التطبيق"
+            exit 1
+          fi
+          echo "  [نجاح] $ERR موجود ($(wc -c < "android/app/src/main/assets/public/$ERR") بايت)"
+
+          if grep -qi "github\|${{ github.repository_owner }}" "$PAGE" 2>/dev/null; then
+            echo "  [فشل] صفحة انقطاع الاتصال تكشف رابط الخادم"
+            exit 1
+          fi
+          echo "  [نجاح] الصفحة لا تكشف أي رابط"
 
       # ---- حقن الجسر الأصلي: ANDROID_ID + وضع المطور + الموقع الوهمي ----
       - name: Inject native bridge (Java)
