@@ -124,12 +124,32 @@
 
   <script>
     (function () {
-      var btn    = document.getElementById('retry');
-      var dot    = document.getElementById('dot');
-      var status = document.getElementById('status');
+      var btn      = document.getElementById('retry');
+      var dot      = document.getElementById('dot');
+      var status   = document.getElementById('status');
+      var BTN_TEXT = 'إعادة المحاولة';
+
+      /** الجسر الأصلي متاح داخل التطبيق فقط، وغير موجود في المتصفح */
+      function bridge() {
+        var b = window.AndroidBridge;
+        return (b && typeof b === 'object') ? b : null;
+      }
+
+      /**
+       * فحص الاتصال من نظام أندرويد حين يكون متاحاً.
+       * navigator.onLine داخل WebView يعيد true لمجرد وجود واجهة شبكة نشطة،
+       * فيظهر "عاد الاتصال" والهاتف غير متصل فعلاً.
+       */
+      function isOnline() {
+        var b = bridge();
+        if (b && typeof b.isConnected === 'function') {
+          try { return b.isConnected() === true; } catch (e) {}
+        }
+        return navigator.onLine;
+      }
 
       function render() {
-        if (navigator.onLine) {
+        if (isOnline()) {
           dot.className = 'dot online';
           status.textContent = 'عاد الاتصال — اضغط إعادة المحاولة';
         } else {
@@ -138,22 +158,52 @@
         }
       }
 
+      function resetButton(message) {
+        btn.disabled = false;
+        btn.textContent = BTN_TEXT;
+        if (message) status.textContent = message;
+      }
+
       btn.addEventListener('click', function () {
+        // ما زال الاتصال منقطعاً: لا نحاول التنقّل أصلاً
+        if (!isOnline()) {
+          dot.className = 'dot';
+          status.textContent = 'ما زال الاتصال منقطعاً — تحقق من الشبكة';
+          return;
+        }
+
         btn.disabled = true;
         btn.innerHTML = 'جارٍ إعادة التحميل<span class="spinner"></span>';
-        // إعادة تحميل الصفحة تعيد المحاولة على رابط التطبيق الأصلي
-        setTimeout(function () { location.reload(); }, 250);
+
+        var b = bridge();
+        if (b && typeof b.reloadApp === 'function' && b.canReloadApp && b.canReloadApp()) {
+          // داخل التطبيق: يحمّل الجسر رابط التطبيق الأصلي في نفس الـ WebView.
+          // استخدام location.reload هنا خطأ: عنوان هذه الصفحة محلي،
+          // وإعادة تحميله تفتح المتصفح وتفشل بـ ERR_CONNECTION_REFUSED.
+          try {
+            b.reloadApp();
+          } catch (e) {
+            resetButton('تعذّرت إعادة المحاولة — أعد فتح التطبيق');
+          }
+        } else {
+          // خارج التطبيق: إعادة تحميل عادية في المتصفح
+          setTimeout(function () { location.reload(); }, 200);
+        }
+
+        // إن لم يحدث أي تنقّل خلال 8 ثوانٍ نُعيد الزر لحالته
+        setTimeout(function () {
+          if (btn.disabled) resetButton('تعذّر الوصول للخادم — حاول مرة أخرى');
+        }, 8000);
       });
 
       window.addEventListener('online', render);
       window.addEventListener('offline', render);
       render();
 
-      // فحص دوري: بمجرد عودة الاتصال يُعاد التحميل تلقائياً
+      // تحديث حالة المؤشر دورياً دون إعادة تحميل تلقائية،
+      // فلو كان الخادم نفسه متوقفاً لدخل التطبيق في حلقة لا تنتهي.
       setInterval(function () {
-        if (navigator.onLine && !btn.disabled) {
-          render();
-        }
+        if (!btn.disabled) render();
       }, 3000);
     })();
   </script>
