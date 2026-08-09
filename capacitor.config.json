@@ -6,7 +6,8 @@
   "server": {
     "url": "https://bahaamohamed51-coder.github.io/Uniteam-v3/",
     "cleartext": true,
-    "androidScheme": "https"
+    "androidScheme": "https",
+    "errorPath": "offline.html"
   },
   "android": {
     "allowMixedContent": true,
