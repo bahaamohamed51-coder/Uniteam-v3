@@ -26,8 +26,19 @@ public class MainActivity extends BridgeActivity {
             if (this.getBridge() != null) {
                 WebView webView = this.getBridge().getWebView();
                 if (webView != null) {
-                    webView.addJavascriptInterface(new AndroidBridge(this), "AndroidBridge");
-                    android.util.Log.i("Uniteam", "AndroidBridge registered successfully");
+                    AndroidBridge bridge = new AndroidBridge(this);
+
+                    // رابط التطبيق الأصلي: الخادم البعيد إن حُدّد، وإلا الرابط المحلي.
+                    // تحتاجه صفحة انقطاع الاتصال لتعيد التحميل على العنوان الصحيح
+                    // بدل عنوانها المحلي الذي يفتح المتصفح ويفشل.
+                    String appUrl = this.getBridge().getServerUrl();
+                    if (appUrl == null || appUrl.trim().isEmpty()) {
+                        appUrl = this.getBridge().getAppUrl();
+                    }
+                    bridge.attach(webView, appUrl);
+
+                    webView.addJavascriptInterface(bridge, "AndroidBridge");
+                    android.util.Log.i("Uniteam", "AndroidBridge registered, appUrl=" + appUrl);
                 }
             }
         } catch (Exception e) {

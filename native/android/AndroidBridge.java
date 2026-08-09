@@ -7,9 +7,13 @@ import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.location.Location;
 import android.location.LocationManager;
+import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkCapabilities;
 import android.os.Build;
 import android.provider.Settings;
 import android.webkit.JavascriptInterface;
+import android.webkit.WebView;
 
 import java.util.List;
 
@@ -26,8 +30,18 @@ public class AndroidBridge {
 
     private final Context ctx;
 
+    // يُملآن من MainActivity بعد إنشاء الـ WebView، ويُستخدمان في reloadApp
+    private WebView webView;
+    private String appUrl;
+
     public AndroidBridge(Context context) {
         this.ctx = context.getApplicationContext();
+    }
+
+    /** يربط الجسر بالـ WebView ورابط التطبيق. يُستدعى من MainActivity وحدها. */
+    public void attach(WebView webView, String appUrl) {
+        this.webView = webView;
+        this.appUrl = appUrl;
     }
 
     // =====================================================
@@ -339,7 +353,81 @@ public class AndroidBridge {
     }
 
     // =====================================================
-    // 4) تشخيص - يساعد على تفسير أي رفض غير متوقع
+    // 4) الاتصال وإعادة التحميل - تستخدمهما صفحة offline.html
+    // =====================================================
+
+    /**
+     * فحص وجود اتصال حقيقي بالإنترنت من نظام أندرويد.
+     *
+     * أدق بكثير من navigator.onLine داخل WebView، فتلك تكتفي بوجود واجهة شبكة
+     * نشطة وتعيد true حتى لو كان الواي فاي متصلاً بلا إنترنت.
+     * هنا نشترط NET_CAPABILITY_VALIDATED أي أن النظام تحقق فعلياً من وصول الإنترنت.
+     */
+    @JavascriptInterface
+    public boolean isConnected() {
+        try {
+            ConnectivityManager cm =
+                    (ConnectivityManager) ctx.getSystemService(Context.CONNECTIVITY_SERVICE);
+            if (cm == null) {
+                return false;
+            }
+
+            Network network = cm.getActiveNetwork();
+            if (network == null) {
+                return false;
+            }
+
+            NetworkCapabilities caps = cm.getNetworkCapabilities(network);
+            if (caps == null) {
+                return false;
+            }
+
+            return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                    && caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * إعادة تحميل التطبيق على رابطه الأصلي داخل الـ WebView نفسه.
+     *
+     * لا يجوز استخدام location.reload من صفحة الخطأ: عنوانها محلي
+     * (https://localhost/offline.html) وCapacitor يعامل أي عنوان خارج نطاق
+     * الخادم كرابط خارجي فيفتحه في المتصفح، فيظهر ERR_CONNECTION_REFUSED.
+     *
+     * التنفيذ يمر عبر webView.post لأن استدعاءات JavascriptInterface
+     * تصل على خيط منفصل، ولا يجوز لمس الـ WebView إلا من خيط الواجهة.
+     */
+    @JavascriptInterface
+    public void reloadApp() {
+        final WebView view = this.webView;
+        final String url = this.appUrl;
+
+        if (view == null || url == null || url.trim().isEmpty()) {
+            return;
+        }
+
+        view.post(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    view.loadUrl(url);
+                } catch (Exception e) {
+                    android.util.Log.e("Uniteam", "reloadApp failed", e);
+                }
+            }
+        });
+    }
+
+    /** يتيح للصفحة معرفة أنها تعمل داخل التطبيق وأن إعادة التحميل متاحة */
+    @JavascriptInterface
+    public boolean canReloadApp() {
+        return this.webView != null && this.appUrl != null && !this.appUrl.trim().isEmpty();
+    }
+
+    // =====================================================
+    // 5) تشخيص - يساعد على تفسير أي رفض غير متوقع
     // =====================================================
 
     /**
